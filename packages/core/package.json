@@ -1,0 +1,39 @@
+{
+  "name": "@rolldown/core",
+  "version": "0.0.0",
+  "description": "Rollup Rust implementation with 100% API compatible",
+  "keywords": [
+    "Rollup",
+    "webpack",
+    "parcel",
+    "bundle",
+    "swc",
+    "napi-rs",
+    "node-api"
+  ],
+  "author": "LongYinan <lynweklm@gmail.com>",
+  "homepage": "https://github.com/Brooooooklyn/rolldown",
+  "license": "MIT",
+  "main": "lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Brooooooklyn/rolldown.git"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts -d ../../artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish",
+    "version": "napi version"
+  },
+  "dependencies": {
+    "@node-rs/helper": "^1.2.0"
+  },
+  "bugs": {
+    "url": "https://github.com/Brooooooklyn/rolldown/issues"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/Brooooooklyn"
+  }
+}
