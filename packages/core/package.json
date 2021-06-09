@@ -2,15 +2,7 @@
   "name": "@rolldown/core",
   "version": "0.0.0",
   "description": "Rollup Rust implementation with 100% API compatible",
-  "keywords": [
-    "Rollup",
-    "webpack",
-    "parcel",
-    "bundle",
-    "swc",
-    "napi-rs",
-    "node-api"
-  ],
+  "keywords": ["Rollup", "webpack", "parcel", "bundle", "swc", "napi-rs", "node-api"],
   "author": "LongYinan <lynweklm@gmail.com>",
   "homepage": "https://github.com/Brooooooklyn/rolldown",
   "license": "MIT",
