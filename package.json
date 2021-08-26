@@ -17,6 +17,7 @@
   },
   "scripts": {
     "artifacts": "lerna run artifacts",
+    "build": "napi build --platform --release --cargo-cwd ./packages/core -c ./packages/core/package.json",
     "lint": "eslint . -c ./.eslintrc.yml \"packages/**/*.{ts,js}\"",
     "test": "ava",
     "format": "run-p format:md format:json format:yaml format:source",
