@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.1](https://github.com/Brooooooklyn/rolldown/compare/@rolldown/core@0.1.0...@rolldown/core@0.1.1) (2021-09-27)
+
+### Bug Fixes
+
+- **node:** publish config ([b03dc55](https://github.com/Brooooooklyn/rolldown/commit/b03dc557cbb66ff999c3e3126fbb6696cef7defe))
+
 # 0.1.0 (2021-09-27)
 
 ### Features
