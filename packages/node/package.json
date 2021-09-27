@@ -38,6 +38,10 @@
   "dependencies": {
     "@node-rs/helper": "^1.2.1"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "bugs": {
     "url": "https://github.com/Brooooooklyn/rolldown/issues"
   },

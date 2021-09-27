@@ -1,3 +1,3 @@
-# `@napi-rs/package-template-win32-ia32-msvc`
+# `@rolldown/core-win32-ia32-msvc`
 
-This is the **i686-pc-windows-msvc** binary for `@napi-rs/package-template`
+This is the **i686-pc-windows-msvc** binary for `@rolldown/core`

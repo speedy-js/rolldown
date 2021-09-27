@@ -1,19 +1,24 @@
 {
-  "name": "@napi-rs/package-template-linux-arm64-musl",
+  "name": "@rolldown/core-linux-arm64-musl",
   "version": "0.1.0",
   "os": ["linux"],
   "cpu": ["arm64"],
-  "main": "package-template.linux-arm64-musl.node",
-  "files": ["package-template.linux-arm64-musl.node"],
-  "description": "Template project for writing node package with napi-rs",
-  "keywords": ["napi-rs", "NAPI", "N-API", "Rust", "node-addon", "node-addon-api"],
+  "main": "rolldown.linux-arm64-musl.node",
+  "files": ["rolldown.linux-arm64-musl.node"],
+  "description": "Rollup Rust implementation with 100% API compatible",
+  "keywords": ["Rollup", "webpack", "parcel", "bundle", "swc", "napi-rs", "node-api"],
+  "author": "LongYinan <lynweklm@gmail.com>",
+  "homepage": "https://github.com/Brooooooklyn/rolldown",
   "license": "MIT",
-  "engines": {
-    "node": ">= 10"
-  },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
-  "repository": "git@github.com:napi-rs/package-template.git"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Brooooooklyn/rolldown.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Brooooooklyn/rolldown/issues"
+  }
 }
