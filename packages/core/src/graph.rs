@@ -37,6 +37,7 @@ pub struct Graph {
   pub entry_module: Arc<Module>,
   pub modules_by_id: RwLock<HashMap<String, ModOrExt, RandomState>>,
   pub hook_driver: HookDriver,
+  pub(crate) parent_dir_cache: RwLock<HashMap<String, String, RandomState>>,
 }
 
 impl Graph {
@@ -46,9 +47,10 @@ impl Graph {
     let hook_driver = HookDriver::new();
     let modules_by_id: RwLock<HashMap<String, ModOrExt, RandomState>> =
       RwLock::new(HashMap::default());
+    let parent_dir_cache = RwLock::new(HashMap::default());
     let mut real_modules_by_id: HashMap<String, ModOrExt, RandomState> = HashMap::default();
     let id = hook_driver
-      .resolve_id(entry, None)
+      .resolve_id(entry, None, &parent_dir_cache)
       .ok_or_else(|| GraphError::EntryNotFound(entry.to_owned()))?;
     let source = hook_driver.load(&id)?;
     let mut ret = Arc::new(Self {
@@ -56,6 +58,7 @@ impl Graph {
       entry_module: Arc::new(Module::empty()),
       modules_by_id,
       hook_driver,
+      parent_dir_cache,
     });
     let entry_module = Arc::new(Module::new(source, id.to_string(), &ret));
     let graph = Arc::make_mut(&mut ret);
@@ -95,7 +98,7 @@ impl Graph {
     Ok(
       this
         .hook_driver
-        .resolve_id(source, importer)
+        .resolve_id(source, importer, &this.parent_dir_cache)
         .map(|id| {
           this.get_module(&id).unwrap_or_else(|| {
             let source = this.hook_driver.load(&id).unwrap();
