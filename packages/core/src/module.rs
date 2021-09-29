@@ -17,17 +17,30 @@ use crate::statement::Statement;
 #[derive(Clone)]
 pub struct Module {
   pub source: String,
-  pub graph: Arc<Graph>,
+  pub graph: *const Graph,
   pub id: String,
   pub statements: Vec<Arc<Statement>>,
   pub imports: HashMap<String, ImportDesc, RandomState>,
   pub exports: HashMap<String, ExportDesc, RandomState>,
 }
 
+unsafe impl Sync for Module {}
+
 impl Module {
-  pub fn new(source: String, id: String, graph: Arc<Graph>) -> Self {
+  pub(crate) fn empty() -> Self {
+    Self {
+      graph: std::ptr::null(),
+      source: "".to_owned(),
+      id: "".to_owned(),
+      statements: vec![],
+      imports: HashMap::default(),
+      exports: HashMap::default(),
+    }
+  }
+
+  pub fn new(source: String, id: String, graph: &Arc<Graph>) -> Self {
     let mut module = Module {
-      graph,
+      graph: Arc::as_ptr(graph),
       source,
       id,
       statements: vec![],
@@ -117,7 +130,7 @@ impl Module {
             ModuleDecl::Import(import_decl) => {
               // TODO: delete unused `import './foo'` that has no effects
               if let Ok(ModOrExt::Mod(ref m)) = Graph::fetch_module(
-                &self.graph,
+                &self.get_graph(),
                 &import_decl.src.value.to_string(),
                 Some(&self.id),
               ) {
@@ -131,7 +144,7 @@ impl Module {
               // export * as foo from './foo'
               if let Some(src) = &node.src {
                 if let Ok(ModOrExt::Mod(ref m)) =
-                  Graph::fetch_module(&self.graph, &src.value.to_string(), Some(&self.id))
+                  Graph::fetch_module(&self.get_graph(), &src.value.to_string(), Some(&self.id))
                 {
                   return Some(m.expand_all_statements(false));
                 };
@@ -181,6 +194,13 @@ impl Module {
         e.into_diagnostic(&handler).emit()
       })
       .expect("failed to parser module")
+  }
+
+  fn get_graph(&self) -> Arc<Graph> {
+    unsafe {
+      Arc::increment_strong_count(self.graph);
+      Arc::from_raw(self.graph)
+    }
   }
 }
 

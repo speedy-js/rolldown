@@ -34,7 +34,7 @@ impl From<io::Error> for GraphError {
 #[non_exhaustive]
 pub struct Graph {
   pub entry: String,
-  pub entry_module: Option<Arc<Module>>,
+  pub entry_module: Arc<Module>,
   pub modules_by_id: RwLock<HashMap<String, ModOrExt, RandomState>>,
   pub hook_driver: HookDriver,
 }
@@ -53,22 +53,21 @@ impl Graph {
     let source = hook_driver.load(&id)?;
     let mut ret = Arc::new(Self {
       entry: entry.to_owned(),
-      entry_module: None,
+      entry_module: Arc::new(Module::empty()),
       modules_by_id,
       hook_driver,
     });
-    let ret_cloned = ret.clone();
+    let entry_module = Arc::new(Module::new(source, id.to_string(), &ret));
     let graph = Arc::make_mut(&mut ret);
-    let entry_module = Arc::new(Module::new(source, id.to_string(), ret_cloned));
     let module = ModOrExt::Mod(entry_module.clone());
     real_modules_by_id.insert(id, module);
-    graph.entry_module = Some(entry_module);
+    graph.entry_module = entry_module;
     graph.modules_by_id = RwLock::new(real_modules_by_id);
     Ok(ret)
   }
 
   pub fn get_swc_module(&self) -> Option<swc_ecma_ast::Module> {
-    let statements = Module::expand_all_statements(self.entry_module.as_ref()?, true);
+    let statements = Module::expand_all_statements(self.entry_module.as_ref(), true);
     let body = statements.par_iter().map(|s| s.node.clone()).collect();
 
     Some(swc_ecma_ast::Module {
@@ -100,7 +99,7 @@ impl Graph {
         .map(|id| {
           this.get_module(&id).unwrap_or_else(|| {
             let source = this.hook_driver.load(&id).unwrap();
-            let module = ModOrExt::Mod(Arc::new(Module::new(source, id.to_string(), this.clone())));
+            let module = ModOrExt::Mod(Arc::new(Module::new(source, id.to_string(), this)));
             this.insert_module(id.clone(), module.clone());
             module
           })
