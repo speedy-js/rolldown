@@ -17,10 +17,41 @@ pub struct Statement {
   pub is_included: AtomicBool,
   pub is_import_declaration: bool,
   pub is_export_declaration: bool,
+  pub defines: Vec<String>,
+  pub module_id: String,
+}
+
+fn collect_defines(node: &ModuleItem) -> Vec<String> {
+  let mut defines = vec![];
+  if let ModuleItem::Stmt(Stmt::Decl(decl)) = node {
+    match decl {
+      Decl::Class(node) => {
+        defines.push(node.ident.sym.to_string());
+      },
+      Decl::Fn(node) => {
+        defines.push(node.ident.sym.to_string());
+      },
+      Decl::Var(node) => {
+        node
+          .decls
+          .iter()
+          .for_each(|decl| {
+            match &decl.name {
+              Pat::Ident(ident) => {
+                defines.push(ident.id.sym.to_string());
+              },
+              _ => {},
+            };
+          });
+      },
+      _ => {},
+    }
+  };
+  defines
 }
 
 impl Statement {
-  pub fn new(node: ModuleItem) -> Self {
+  pub fn new(node: ModuleItem, module_id: String) -> Self {
     let is_import_declaration = matches!(&node, ModuleItem::ModuleDecl(ModuleDecl::Import(_)));
     let is_export_declaration = if let ModuleItem::ModuleDecl(module_decl) = &node {
       matches!(
@@ -34,11 +65,14 @@ impl Statement {
     } else {
       false
     };
+    let defines = collect_defines(&node);
     Statement {
+      module_id,
       node,
       is_included: AtomicBool::new(false),
       is_import_declaration,
       is_export_declaration,
+      defines,
     }
   }
 

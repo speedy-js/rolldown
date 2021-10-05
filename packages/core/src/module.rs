@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::RwLock;
 use std::sync::{atomic::Ordering, Arc};
 
 use ahash::RandomState;
@@ -7,7 +8,7 @@ use swc_common::{
   errors::{ColorConfig, Handler},
   FileName,
 };
-use swc_ecma_ast::{ModuleDecl, ModuleItem};
+use swc_ecma_ast::{Decl, ModuleDecl, ModuleItem, Pat, Stmt};
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
 
 use crate::graph;
@@ -42,7 +43,7 @@ impl Module {
     let mut module = Module {
       graph: Arc::as_ptr(graph),
       source,
-      id,
+      id: id.clone(),
       statements: vec![],
       imports: HashMap::default(),
       exports: HashMap::default(),
@@ -52,7 +53,7 @@ impl Module {
     let statements = ast
       .body
       .into_par_iter()
-      .map(|node| Arc::new(Statement::new(node)))
+      .map(|node| Arc::new(Statement::new(node, id.clone())))
       .collect::<Vec<_>>();
     module.statements = statements;
 

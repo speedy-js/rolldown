@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::Arc;
 
@@ -10,6 +10,7 @@ use swc_common::DUMMY_SP;
 use swc_common::{sync::Lrc, SourceMap};
 use thiserror::Error;
 
+use crate::Statement;
 use crate::{external_module::ExternalModule, hook_driver::HookDriver, module::Module};
 
 pub(crate) static SOURCE_MAP: Lazy<Lrc<SourceMap>> = Lazy::new(Default::default);
@@ -69,8 +70,31 @@ impl Graph {
     Ok(ret)
   }
 
+  pub fn deconflict(&self, statements: &Vec<Arc<Statement>>) {
+    // name => module_id
+    let mut definers = HashMap::new();
+		let mut conflicts = HashSet::new();
+    statements
+      .iter()
+      .for_each(|stmt| {
+        stmt
+          .as_ref()
+          .defines
+          .iter()
+          .for_each(|name| {
+            if definers.contains_key(name) {
+              conflicts.insert(name.clone());
+            } else {
+              definers.insert(name.clone(), stmt.module_id.clone());
+            }
+          });
+      });
+
+  }
+
   pub fn get_swc_module(&self) -> Option<swc_ecma_ast::Module> {
     let statements = Module::expand_all_statements(self.entry_module.as_ref(), true);
+    self.deconflict(&statements);
     let body = statements.par_iter().map(|s| s.node.clone()).collect();
 
     Some(swc_ecma_ast::Module {
