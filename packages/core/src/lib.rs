@@ -8,6 +8,7 @@ mod hook_driver;
 mod module;
 mod statement;
 mod types;
+mod utils;
 
 pub use bundle::*;
 pub use graph::*;

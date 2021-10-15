@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use ahash::RandomState;
 use once_cell::sync::Lazy;
-use rayon::prelude::*;
-use swc_common::sync::RwLock;
-use swc_common::DUMMY_SP;
-use swc_common::{sync::Lrc, SourceMap};
+use swc_common::{
+  sync::{Lrc, RwLock},
+  SourceMap,
+};
 use thiserror::Error;
 
 use crate::{external_module::ExternalModule, hook_driver::HookDriver, module::Module};
@@ -22,6 +22,8 @@ pub enum GraphError {
   NoEntry,
   #[error("{0}")]
   IoError(io::Error),
+  #[error("Parse module failed")]
+  ParseModuleError,
 }
 
 impl From<io::Error> for GraphError {
@@ -35,22 +37,20 @@ impl From<io::Error> for GraphError {
 pub struct Graph {
   pub entry: String,
   pub entry_module: Arc<Module>,
-  pub modules_by_id: RwLock<HashMap<String, ModOrExt, RandomState>>,
+  pub modules_by_id: Arc<RwLock<HashMap<String, ModOrExt, RandomState>>>,
   pub hook_driver: HookDriver,
-  pub(crate) parent_dir_cache: RwLock<HashMap<String, String, RandomState>>,
 }
 
 impl Graph {
   // build a module using dependency relationship
-  pub fn build(entry: &str) -> Result<Arc<Self>, GraphError> {
+  pub fn new(entry: &str) -> Result<Arc<Self>, GraphError> {
     // generate the entry module
     let hook_driver = HookDriver::new();
-    let modules_by_id: RwLock<HashMap<String, ModOrExt, RandomState>> =
-      RwLock::new(HashMap::default());
-    let parent_dir_cache = RwLock::new(HashMap::default());
+    let modules_by_id: Arc<RwLock<HashMap<String, ModOrExt, RandomState>>> =
+      Arc::new(RwLock::new(HashMap::default()));
     let mut real_modules_by_id: HashMap<String, ModOrExt, RandomState> = HashMap::default();
     let id = hook_driver
-      .resolve_id(entry, None, &parent_dir_cache)
+      .resolve_id(entry, None)
       .ok_or_else(|| GraphError::EntryNotFound(entry.to_owned()))?;
     let source = hook_driver.load(&id)?;
     let mut ret = Arc::new(Self {
@@ -58,33 +58,25 @@ impl Graph {
       entry_module: Arc::new(Module::empty()),
       modules_by_id,
       hook_driver,
-      parent_dir_cache,
+      // parent_dir_cache,
     });
-    let entry_module = Arc::new(Module::new(source, id.to_string(), &ret));
+    let entry_module = Arc::new(
+      Module::new(source, id.to_string(), &ret).map_err(|_| GraphError::ParseModuleError)?,
+    );
     let graph = Arc::make_mut(&mut ret);
-    let module = ModOrExt::Mod(entry_module.clone());
-    real_modules_by_id.insert(id, module);
+    real_modules_by_id.insert(id, ModOrExt::Mod(entry_module.clone()));
     graph.entry_module = entry_module;
-    graph.modules_by_id = RwLock::new(real_modules_by_id);
+    graph.modules_by_id = Arc::new(RwLock::new(real_modules_by_id));
     Ok(ret)
   }
 
-  pub fn get_swc_module(&self) -> Option<swc_ecma_ast::Module> {
-    let statements = Module::expand_all_statements(self.entry_module.as_ref(), true);
-    let body = statements.par_iter().map(|s| s.node.clone()).collect();
-
-    Some(swc_ecma_ast::Module {
-      span: DUMMY_SP,
-      body,
-      shebang: None,
-    })
-  }
-
+  #[inline]
   pub(crate) fn get_module(&self, id: &str) -> Option<ModOrExt> {
     let read_guard = self.modules_by_id.read();
     read_guard.get(id).cloned()
   }
 
+  #[inline]
   pub(crate) fn insert_module(&self, id: String, module: ModOrExt) {
     let mut write_guard = self.modules_by_id.write();
     write_guard.insert(id, module);
@@ -95,28 +87,30 @@ impl Graph {
     source: &str,
     importer: Option<&str>,
   ) -> Result<ModOrExt, GraphError> {
-    Ok(
-      this
-        .hook_driver
-        .resolve_id(source, importer, &this.parent_dir_cache)
-        .map(|id| {
-          this.get_module(&id).unwrap_or_else(|| {
-            let source = this.hook_driver.load(&id).unwrap();
-            let module = ModOrExt::Mod(Arc::new(Module::new(source, id.to_string(), this)));
-            this.insert_module(id.clone(), module.clone());
-            module
-          })
+    this
+      .hook_driver
+      .resolve_id(source, importer)
+      .map(|id| {
+        this.get_module(&id).map(Ok).unwrap_or_else(|| {
+          let source = this.hook_driver.load(&id).unwrap();
+          if let Ok(m) = Module::new(source, id.clone(), this) {
+            let module = ModOrExt::Mod(Arc::new(m));
+            this.insert_module(id, module.clone());
+            Ok(module)
+          } else {
+            Err(GraphError::ParseModuleError)
+          }
         })
-        .unwrap_or_else(|| {
-          this.get_module(source).unwrap_or_else(|| {
-            let module = ModOrExt::Ext(Arc::new(ExternalModule {
-              name: source.to_owned(),
-            }));
-            this.insert_module(source.to_owned(), module.clone());
-            module
-          })
-        }),
-    )
+      })
+      .unwrap_or_else(|| {
+        this.get_module(source).map(Ok).unwrap_or_else(|| {
+          let module = ModOrExt::Ext(Arc::new(ExternalModule {
+            name: source.to_owned(),
+          }));
+          this.insert_module(source.to_owned(), module.clone());
+          Ok(module)
+        })
+      })
   }
 }
 
@@ -127,9 +121,12 @@ pub enum ModOrExt {
 }
 
 impl ModOrExt {
+  #[inline]
   pub fn is_mod(&self) -> bool {
     matches!(self, ModOrExt::Mod(_))
   }
+
+  #[inline]
   pub fn is_ext(&self) -> bool {
     !self.is_mod()
   }

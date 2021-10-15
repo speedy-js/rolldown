@@ -1,79 +1,70 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
+use ahash::RandomState;
 use swc_common::sync::RwLock;
-use swc_ecma_ast::{Decl, Pat, VarDeclKind};
 
 #[derive(Debug)]
 pub struct Scope {
   pub parent: Option<Arc<Scope>>,
   pub depth: u32,
-  pub declarations: RwLock<HashMap<String, Decl>>,
+  // FIXME: collected defines has empty string ""
+  pub defines: RwLock<HashSet<String, RandomState>>,
   pub is_block_scope: bool,
 }
 
-impl Scope {
-  pub fn new(parent: Option<Arc<Scope>>, params: Option<Vec<Pat>>, block: bool) -> Scope {
-    let _declarations = params.as_ref().map_or(HashMap::new(), |params| {
-      let mut declarations = HashMap::new();
-      params.iter().for_each(|p| {
-        if let Pat::Ident(binding_ident) = &p {
-          declarations.insert(binding_ident.id.sym.to_string(), params);
-        }
-      });
-      declarations
-    });
+impl Default for Scope {
+  fn default() -> Self {
     Scope {
-      depth: parent.as_ref().map_or(0, |p| p.depth + 1),
+      parent: None,
+      depth: 0,
+      defines: RwLock::new(HashSet::default()),
+      is_block_scope: false,
+    }
+  }
+}
+
+impl Scope {
+  pub fn new(parent: Option<Arc<Scope>>, params: Vec<String>, block: bool) -> Scope {
+    let mut defines = HashSet::default();
+    params.into_iter().for_each(|p| {
+      defines.insert(p);
+    });
+    let depth = parent.as_ref().map_or(0, |p| p.depth + 1);
+    Scope {
+      depth,
       parent,
-      declarations: RwLock::new(HashMap::new()),
+      defines: RwLock::new(defines),
       is_block_scope: block,
     }
   }
 
-  pub fn add_declaration(&self, name: &str, declaration: Decl) {
-    let is_block_declaration = if let Decl::Var(var_decl) = &declaration {
-      matches!(var_decl.kind, VarDeclKind::Let | VarDeclKind::Const)
-    } else {
-      false
-    };
-
+  pub fn add_declaration(&self, name: &str, is_block_declaration: bool) {
     if !is_block_declaration && self.is_block_scope {
       self
         .parent
         .as_ref()
-        .unwrap()
-        .add_declaration(name, declaration)
+        .unwrap_or_else(|| panic!("parent not found for name {:?}", name))
+        .add_declaration(name, is_block_declaration)
     } else {
-      self
-        .declarations
-        .write()
-        .insert(name.to_owned(), declaration);
-    }
-  }
-
-  pub fn get_declaration(&self, name: &str) -> Option<Decl> {
-    let read_lock = self.declarations.read();
-    if read_lock.contains_key(name) {
-      return read_lock.get(name).cloned();
-    }
-    if let Some(parent) = &self.parent {
-      parent.get_declaration(name)
-    } else {
-      None
+      self.defines.write().insert(name.to_owned());
     }
   }
 
   pub fn contains(&self, name: &str) -> bool {
-    self.get_declaration(name).is_some()
+    if self.defines.read().contains(name) {
+      true
+    } else if let Some(parent) = self.parent.as_ref() {
+      parent.contains(name)
+    } else {
+      false
+    }
   }
 
-  pub fn find_defining_scope(&self, name: &str) -> Option<&Self> {
-    if self.declarations.read().contains_key(name) {
-      return Some(self);
-    }
-
-    if let Some(parent) = &self.parent {
+  pub fn find_defining_scope(self: &Arc<Self>, name: &str) -> Option<Arc<Self>> {
+    if self.defines.read().contains(name) {
+      Some(self.clone())
+    } else if let Some(parent) = self.parent.as_ref() {
       parent.find_defining_scope(name)
     } else {
       None

@@ -1,12 +1,12 @@
 use std::io::{self, Write};
 use std::sync::Arc;
-
 use swc_common::{BytePos, LineCol};
-use swc_ecma_codegen::text_writer::JsWriter;
+use swc_ecma_codegen::{text_writer::JsWriter, Node};
 use swc_ecma_parser::JscTarget;
 use thiserror::Error;
 
 use crate::graph;
+use crate::module::Module;
 
 #[derive(Debug, Error)]
 pub enum BundleError {
@@ -39,16 +39,16 @@ pub struct Bundle {
 impl Bundle {
   pub fn new(entry: &str) -> Result<Self, BundleError> {
     Ok(Self {
-      graph: graph::Graph::build(entry)?,
+      graph: graph::Graph::new(entry)?,
     })
   }
 
   pub fn generate<W: Write>(
-    &self,
+    self,
     w: W,
     sm: Option<&mut Vec<(BytePos, LineCol)>>,
   ) -> Result<(), BundleError> {
-    let node = self.graph.get_swc_module().ok_or(BundleError::NoModule)?;
+    let statements = Module::expand_all_statements(&self.graph.entry_module, true);
     let mut emitter = swc_ecma_codegen::Emitter {
       cfg: swc_ecma_codegen::Config { minify: false },
       cm: graph::SOURCE_MAP.clone(),
@@ -61,7 +61,9 @@ impl Bundle {
         JscTarget::latest(),
       )),
     };
-    emitter.emit_module(&node)?;
+    for stmt in statements {
+      stmt.node.read().emit_with(&mut emitter)?;
+    }
     Ok(())
   }
 }
@@ -78,19 +80,19 @@ mod tests {
     assert!(bundle.generate(&mut output, Some(&mut sm)).is_ok());
     assert_eq!(
       String::from_utf8(output).expect("Output is not utf8"),
-      r#"export default function add(a, b) {
+      r#"function add(a, b) {
     return a + b;
-};
-export const noUsed = ()=>{
+}
+const noUsed = ()=>{
     return `I'm no used function`;
 };
-export default function mul(a, b) {
+function mul(a, b) {
     let result = 0;
     for(let i = 0; i < a; i++){
         result = add(result, b);
     }
     return result;
-};
+}
 console.log(mul(8, 9));
 "#
     )
