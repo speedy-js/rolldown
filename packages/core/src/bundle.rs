@@ -1,12 +1,11 @@
 use std::io::{self, Write};
-use std::sync::Arc;
+
 use swc_common::{BytePos, LineCol};
+use swc_ecma_ast::EsVersion;
 use swc_ecma_codegen::{text_writer::JsWriter, Node};
-use swc_ecma_parser::JscTarget;
 use thiserror::Error;
 
-use crate::graph;
-use crate::module::Module;
+use crate::{graph, module::analyse};
 
 #[derive(Debug, Error)]
 pub enum BundleError {
@@ -33,7 +32,7 @@ impl From<graph::GraphError> for BundleError {
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Bundle {
-  pub graph: Arc<graph::Graph>,
+  pub graph: graph::Graph,
 }
 
 impl Bundle {
@@ -48,7 +47,22 @@ impl Bundle {
     w: W,
     sm: Option<&mut Vec<(BytePos, LineCol)>>,
   ) -> Result<(), BundleError> {
-    let statements = Module::expand_all_statements(&self.graph.entry_module, true);
+    let statements = self.graph.build();
+    statements
+      .iter()
+      .filter_map(|s| {
+        self
+          .graph
+          .get_module(&s.module_id)
+          .into_mod()
+          .map(|m| (s, m))
+      })
+      .for_each(|(s, module)| {
+        if s.is_export_declaration {
+          analyse::fold_export_decl_to_decl(&mut s.node.write(), module);
+        }
+      });
+
     let mut emitter = swc_ecma_codegen::Emitter {
       cfg: swc_ecma_codegen::Config { minify: false },
       cm: graph::SOURCE_MAP.clone(),
@@ -58,43 +72,12 @@ impl Bundle {
         "\n",
         w,
         sm,
-        JscTarget::latest(),
+        EsVersion::latest(),
       )),
     };
     for stmt in statements {
       stmt.node.read().emit_with(&mut emitter)?;
     }
     Ok(())
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::Bundle;
-
-  #[test]
-  fn e2e() {
-    let bundle = Bundle::new("fixtures/main.js").expect("Create bundle failed");
-    let mut output = Vec::new();
-    let mut sm = Vec::new();
-    assert!(bundle.generate(&mut output, Some(&mut sm)).is_ok());
-    assert_eq!(
-      String::from_utf8(output).expect("Output is not utf8"),
-      r#"function add(a, b) {
-    return a + b;
-}
-const noUsed = ()=>{
-    return `I'm no used function`;
-};
-function mul(a, b) {
-    let result = 0;
-    for(let i = 0; i < a; i++){
-        result = add(result, b);
-    }
-    return result;
-}
-console.log(mul(8, 9));
-"#
-    )
   }
 }
