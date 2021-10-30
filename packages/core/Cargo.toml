@@ -4,21 +4,15 @@ edition = "2018"
 name = "rolldown"
 version = "0.0.1"
 
-[[bin]]
+[[example]]
 bench = false
-name = "bundle-lodash-es"
-path = "bin/lodash.rs"
-test = false
-
-[[bin]]
-bench = false
-name = "bundle-three-js"
-path = "bin/three.rs"
+name = "bundle"
+path = "examples/bundle.rs"
 test = false
 
 [dependencies.swc_common]
 features = ["tty-emitter", "concurrent"]
-version = "0.13"
+version = "0.14"
 
 [dependencies]
 ahash = "0.7"
@@ -29,8 +23,8 @@ napi-derive = "1"
 once_cell = "1"
 path-absolutize = "3"
 rayon = "1"
-swc_ecma_ast = "0.54"
-swc_ecma_codegen = "0.75"
-swc_ecma_parser = "0.73"
-swc_ecma_visit = "0.40"
+swc_ecma_ast = "0.56"
+swc_ecma_codegen = "0.78"
+swc_ecma_parser = "0.76"
+swc_ecma_visit = "0.42"
 thiserror = "1"
