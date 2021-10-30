@@ -17,7 +17,11 @@ use rolldown::swc_common::{BytePos, LineCol};
 #[global_allocator]
 static ALLOC: mimalloc_rust::GlobalMiMalloc = mimalloc_rust::GlobalMiMalloc;
 
-#[cfg(all(target_arch = "x86_64", not(debug_assertions)))]
+#[cfg(all(
+  target_arch = "x86_64",
+  not(target_env = "musl"),
+  not(debug_assertions)
+))]
 #[global_allocator]
 static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 
