@@ -1,5 +1,3 @@
-use log::debug;
-
 use std::io;
 mod built_in;
 
@@ -23,14 +21,14 @@ impl HookDriver {
 
   pub fn build_start() {}
 
+  #[inline]
   pub fn resolve_id(&self, source: &str, importer: Option<&str>) -> Option<String> {
-    let id = built_in::resolve_id(source, importer);
-    debug!("resolve_id: {:?}", id);
-    id
+    built_in::resolve_id(source, importer)
   }
 
+  #[inline]
   pub fn load(&self, id: &str) -> io::Result<String> {
-    debug!("load id: {}", id);
+    // debug!("load id: {}", id);
     std::fs::read_to_string(id)
   }
 

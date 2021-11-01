@@ -8,7 +8,6 @@ use swc_common::sync::RwLock;
 pub struct Scope {
   pub parent: Option<Arc<Scope>>,
   pub depth: u32,
-  // FIXME: collected defines has empty string ""
   pub defines: RwLock<HashSet<String, RandomState>>,
   pub is_block_scope: bool,
 }

@@ -12,6 +12,8 @@ mod utils;
 
 pub use bundle::*;
 pub use graph::*;
+pub use hook_driver::*;
+pub use module::*;
 pub use statement::*;
 pub use types::module::RollDownModule;
 

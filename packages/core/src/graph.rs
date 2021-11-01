@@ -1,15 +1,14 @@
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::Arc;
 
-use ahash::RandomState;
 use once_cell::sync::Lazy;
-use swc_common::{
-  sync::{Lrc, RwLock},
-  SourceMap,
-};
+use swc_common::{sync::Lrc, SourceMap};
 use thiserror::Error;
 
+use crate::module::analyse::ExportDesc;
+use crate::Statement;
 use crate::{external_module::ExternalModule, hook_driver::HookDriver, module::Module};
 
 pub(crate) static SOURCE_MAP: Lazy<Lrc<SourceMap>> = Lazy::new(Default::default);
@@ -33,69 +32,48 @@ impl From<io::Error> for GraphError {
 }
 
 #[derive(Clone)]
-#[non_exhaustive]
-pub struct Graph {
-  pub entry: String,
-  pub entry_module: Arc<Module>,
-  pub modules_by_id: Arc<RwLock<HashMap<String, ModOrExt, RandomState>>>,
-  pub hook_driver: HookDriver,
+struct ModuleContainer {
+  // cached module
+  modules_by_id: RefCell<HashMap<String, ModOrExt>>,
+  internal_namespace_module_ids: HashSet<String>,
 }
 
-impl Graph {
-  // build a module using dependency relationship
-  pub fn new(entry: &str) -> Result<Arc<Self>, GraphError> {
-    // generate the entry module
-    let hook_driver = HookDriver::new();
-    let modules_by_id: Arc<RwLock<HashMap<String, ModOrExt, RandomState>>> =
-      Arc::new(RwLock::new(HashMap::default()));
-    let mut real_modules_by_id: HashMap<String, ModOrExt, RandomState> = HashMap::default();
-    let id = hook_driver
-      .resolve_id(entry, None)
-      .ok_or_else(|| GraphError::EntryNotFound(entry.to_owned()))?;
-    let source = hook_driver.load(&id)?;
-    let mut ret = Arc::new(Self {
-      entry: entry.to_owned(),
-      entry_module: Arc::new(Module::empty()),
-      modules_by_id,
-      hook_driver,
-      // parent_dir_cache,
-    });
-    let entry_module = Arc::new(
-      Module::new(source, id.to_string(), &ret).map_err(|_| GraphError::ParseModuleError)?,
-    );
-    let graph = Arc::make_mut(&mut ret);
-    real_modules_by_id.insert(id, ModOrExt::Mod(entry_module.clone()));
-    graph.entry_module = entry_module;
-    graph.modules_by_id = Arc::new(RwLock::new(real_modules_by_id));
-    Ok(ret)
+impl ModuleContainer {
+  pub fn new() -> Self {
+    Self {
+      modules_by_id: RefCell::new(HashMap::default()),
+      internal_namespace_module_ids: HashSet::new(),
+    }
   }
 
   #[inline]
-  pub(crate) fn get_module(&self, id: &str) -> Option<ModOrExt> {
-    let read_guard = self.modules_by_id.read();
-    read_guard.get(id).cloned()
+  pub fn get_module(&self, id: &str) -> Option<ModOrExt> {
+    self.modules_by_id.borrow().get(id).cloned()
   }
 
   #[inline]
   pub(crate) fn insert_module(&self, id: String, module: ModOrExt) {
-    let mut write_guard = self.modules_by_id.write();
-    write_guard.insert(id, module);
+    self.modules_by_id.borrow_mut().insert(id, module);
+  }
+
+  pub fn insert_internal_namespace_module_id(&mut self, id: String) {
+    self.internal_namespace_module_ids.insert(id);
   }
 
   pub(crate) fn fetch_module(
-    this: &Arc<Self>,
+    &self,
     source: &str,
     importer: Option<&str>,
+    hook_driver: &HookDriver,
   ) -> Result<ModOrExt, GraphError> {
-    this
-      .hook_driver
+    hook_driver
       .resolve_id(source, importer)
       .map(|id| {
-        this.get_module(&id).map(Ok).unwrap_or_else(|| {
-          let source = this.hook_driver.load(&id).unwrap();
-          if let Ok(m) = Module::new(source, id.clone(), this) {
+        self.get_module(&id).map(Ok).unwrap_or_else(|| {
+          let source = hook_driver.load(&id).unwrap();
+          if let Ok(m) = Module::new(source, id.clone()) {
             let module = ModOrExt::Mod(Arc::new(m));
-            this.insert_module(id, module.clone());
+            self.insert_module(id, module.clone());
             Ok(module)
           } else {
             Err(GraphError::ParseModuleError)
@@ -103,14 +81,89 @@ impl Graph {
         })
       })
       .unwrap_or_else(|| {
-        this.get_module(source).map(Ok).unwrap_or_else(|| {
+        self.get_module(source).map(Ok).unwrap_or_else(|| {
           let module = ModOrExt::Ext(Arc::new(ExternalModule {
             name: source.to_owned(),
           }));
-          this.insert_module(source.to_owned(), module.clone());
+          self.insert_module(source.to_owned(), module.clone());
           Ok(module)
         })
       })
+  }
+}
+
+#[derive(Clone)]
+#[non_exhaustive]
+pub struct Graph {
+  entry: String,
+  entry_module: Arc<Module>,
+  module_container: RefCell<ModuleContainer>,
+  hook_driver: HookDriver,
+}
+
+impl Graph {
+  // build a module using dependency relationship
+  pub fn new(entry: &str) -> Result<Self, GraphError> {
+    // generate the entry module
+    let hook_driver = HookDriver::new();
+    let module_container = ModuleContainer::new();
+    let entry_module = module_container
+      .fetch_module(entry, None, &hook_driver)?
+      .into_mod()
+      .expect("entry module not found");
+
+    let graph = Self {
+      entry: entry.to_owned(),
+      entry_module,
+      module_container: RefCell::new(module_container),
+      hook_driver,
+    };
+
+    Ok(graph)
+  }
+
+  pub fn build(&self) -> Vec<Arc<Statement>> {
+    log::debug!("start build for entry {:?}", self.entry);
+
+    if let Some(ExportDesc::Default(default_export)) = self.entry_module.exports.get("default") {
+      if let Some(ref name) = default_export.declared_name {
+        self
+          .entry_module
+          .suggest_name("default".to_owned(), name.clone())
+      } else {
+        let default_export_name = "$$legal_identifier".to_owned();
+        self
+          .entry_module
+          .suggest_name("default".to_owned(), default_export_name);
+      }
+    }
+
+    let statements = self.entry_module.expand_all_statements(true, self);
+    self.de_conflict();
+    self.sort();
+    statements
+  }
+
+  fn de_conflict(&self) {}
+
+  fn sort(&self) {}
+
+  pub fn fetch_module(&self, source: &str, importer: Option<&str>) -> Result<ModOrExt, GraphError> {
+    self
+      .module_container
+      .borrow()
+      .fetch_module(source, importer, &self.hook_driver)
+  }
+
+  pub fn get_module(&self, id: &str) -> ModOrExt {
+    self.module_container.borrow().get_module(id).unwrap()
+  }
+
+  pub fn insert_internal_namespace_module_id(&self, id: String) {
+    self
+      .module_container
+      .borrow_mut()
+      .insert_internal_namespace_module_id(id);
   }
 }
 
@@ -129,5 +182,21 @@ impl ModOrExt {
   #[inline]
   pub fn is_ext(&self) -> bool {
     !self.is_mod()
+  }
+
+  pub fn into_mod(self) -> Option<Arc<Module>> {
+    if let ModOrExt::Mod(m) = self {
+      Some(m)
+    } else {
+      None
+    }
+  }
+
+  pub fn into_ext(self) -> Option<Arc<ExternalModule>> {
+    if let ModOrExt::Ext(m) = self {
+      Some(m)
+    } else {
+      None
+    }
   }
 }
