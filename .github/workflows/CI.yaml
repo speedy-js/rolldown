@@ -431,7 +431,7 @@ jobs:
         run: pnpm artifacts
 
       - name: List packages
-        run: ls -R ./packages/node/npm
+        run: ls -R ./node/npm
         shell: bash
 
       - name: Lerna publish
