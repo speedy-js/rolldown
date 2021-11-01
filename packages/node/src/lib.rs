@@ -9,21 +9,12 @@ use napi::{self, CallContext, Env, JsBuffer, JsObject, JsString, Result, Task};
 use rolldown::swc_common::{BytePos, LineCol};
 
 #[cfg(all(
-  not(target_arch = "x86_64"),
-  not(target_env = "musl"),
-  not(target_os = "windows"),
-  not(debug_assertions)
+  not(debug_assertions),
+  not(all(target_os = "windows", target_arch = "aarch64")),
+  not(all(target_os = "linux", target_arch = "aarch64", target_env = "musl")),
 ))]
 #[global_allocator]
 static ALLOC: mimalloc_rust::GlobalMiMalloc = mimalloc_rust::GlobalMiMalloc;
-
-#[cfg(all(
-  target_arch = "x86_64",
-  not(target_env = "musl"),
-  not(debug_assertions)
-))]
-#[global_allocator]
-static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 
 #[module_exports]
 fn init(mut exports: JsObject) -> Result<()> {
