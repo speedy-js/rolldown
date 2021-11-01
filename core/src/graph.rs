@@ -1,10 +1,13 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::Arc;
 
+use ahash::RandomState;
 use once_cell::sync::Lazy;
-use swc_common::{sync::Lrc, SourceMap};
+use swc_common::{
+  sync::{Lrc, RwLock},
+  SourceMap,
+};
 use thiserror::Error;
 
 use crate::module::analyse::ExportDesc;
@@ -34,15 +37,15 @@ impl From<io::Error> for GraphError {
 #[derive(Clone)]
 struct ModuleContainer {
   // cached module
-  modules_by_id: RefCell<HashMap<String, ModOrExt>>,
-  internal_namespace_module_ids: HashSet<String>,
+  modules_by_id: RwLock<HashMap<String, ModOrExt, RandomState>>,
+  internal_namespace_module_ids: HashSet<String, RandomState>,
 }
 
 impl ModuleContainer {
   pub fn new() -> Self {
     Self {
-      modules_by_id: RefCell::new(HashMap::default()),
-      internal_namespace_module_ids: HashSet::new(),
+      modules_by_id: RwLock::new(HashMap::default()),
+      internal_namespace_module_ids: HashSet::default(),
     }
   }
 
@@ -97,7 +100,7 @@ impl ModuleContainer {
 pub struct Graph {
   entry: String,
   entry_module: Arc<Module>,
-  module_container: RefCell<ModuleContainer>,
+  module_container: RwLock<ModuleContainer>,
   hook_driver: HookDriver,
 }
 
@@ -115,7 +118,7 @@ impl Graph {
     let graph = Self {
       entry: entry.to_owned(),
       entry_module,
-      module_container: RefCell::new(module_container),
+      module_container: RwLock::new(module_container),
       hook_driver,
     };
 
