@@ -122,7 +122,7 @@ impl Visit for StatementAnalyser {
     let params = node
       .params
       .iter()
-      .map(|p| ast::helper::collect_names_of_pat(p))
+      .map(ast::helper::collect_names_of_pat)
       .flatten()
       .collect();
 
