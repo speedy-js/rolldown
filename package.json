@@ -15,7 +15,7 @@
     "artifacts": "lerna run artifacts",
     "bench": "node -r @swc-node/register ./benchmark/bench.ts",
     "bench:bundle": "node -r @swc-node/register ./benchmark/bundle.ts",
-    "build": "napi build --platform --release --cargo-cwd ./packages/node -c ./packages/node/package.json",
+    "build": "napi build --platform --release --cargo-cwd ./node -c ./node/package.json",
     "lint": "eslint . -c ./.eslintrc.yml",
     "test": "ava",
     "format": "run-p format:md format:json format:yaml format:source",

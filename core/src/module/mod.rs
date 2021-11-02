@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use ahash::RandomState;
 use log::debug;
+use rayon::prelude::*;
 use swc_common::sync::RwLock;
-
 use swc_ecma_ast::{ModuleDecl, ModuleItem};
 
 use crate::graph;
@@ -87,7 +87,7 @@ impl Module {
 
     let all_statements = self
       .statements
-      .iter()
+      .par_iter()
       .flat_map(|s| {
         if s.is_import_declaration {
           vec![]

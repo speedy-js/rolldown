@@ -2,7 +2,7 @@ use rolldown::Bundle;
 
 #[test]
 fn output_should_be_utf8() {
-  let bundle = Bundle::new("fixtures/main.js").expect("Create bundle failed");
+  let bundle = Bundle::new("tests/fixtures/side-effects/main.js").expect("Create bundle failed");
   let mut output = Vec::new();
   let mut sm = Vec::new();
   assert!(bundle.generate(&mut output, Some(&mut sm)).is_ok());
