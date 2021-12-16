@@ -1,14 +1,14 @@
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
-use swc_common::DUMMY_SP;
 use swc_ecma_ast::{
-  BindingIdent, ClassDecl, Decl, DefaultDecl, EmptyStmt, EsVersion, ExportSpecifier, Expr, FnDecl,
-  Ident, ModuleDecl, ModuleItem, Pat, Stmt, VarDecl, VarDeclarator,
+  CallExpr, Decl, DefaultDecl, EsVersion, ExportSpecifier, Expr, ExprOrSuper, Lit, ModuleDecl,
 };
+use swc_ecma_visit::{Node, VisitAll, VisitAllWith};
 
-use crate::{ast, Statement};
+use crate::{utils};
+use crate::types::ModOrExt;
 
-use super::Module;
 use swc_common::sync::Lrc;
 use swc_common::{
   errors::{ColorConfig, Handler},
@@ -16,323 +16,258 @@ use swc_common::{
 };
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
 use swc_ecma_parser::{EsConfig, TsConfig};
-impl Module {
-  pub fn analyse(
-    statements: &[Arc<Statement>],
-  ) -> (HashMap<String, ImportDesc>, HashMap<String, ExportDesc>) {
-    // analyse imports and exports
-    // @TODO
-    // Handle duplicated
-    let mut imports = HashMap::new();
-    let mut exports = HashMap::new();
-    statements
-      .iter()
-      .filter(|s| s.is_import_declaration)
-      .for_each(|s| {
-        let module_item: &ModuleItem = &s.node.read();
-        if let ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) = module_item {
-          import_decl.specifiers.iter().for_each(|specifier| {
-            let local_name;
-            let name;
-            match specifier {
-              // import foo from './foo'
-              swc_ecma_ast::ImportSpecifier::Default(n) => {
-                local_name = n.local.sym.to_string();
-                name = "default".to_owned();
-              }
-              // import { foo } from './foo'
-              // import { foo as foo2 } from './foo'
-              swc_ecma_ast::ImportSpecifier::Named(n) => {
-                local_name = n.local.sym.to_string();
-                name = n.imported.as_ref().map_or(
-                  local_name.clone(), // `import { foo } from './foo'` doesn't has local name
-                  |ident| ident.sym.to_string(), // `import { foo as _foo } from './foo'` has local name '_foo'
-                );
-              }
-              // import * as foo from './foo'
-              swc_ecma_ast::ImportSpecifier::Namespace(n) => {
-                local_name = n.local.sym.to_string();
-                name = "*".to_owned()
-              }
-            }
-            assert_ne!(local_name, "default");
-            imports.insert(
-              local_name.clone(),
-              ImportDesc {
-                source: import_decl.src.value.to_string(),
-                name,
-                local_name,
-              },
-            );
-          })
+
+fn add_import(
+  module_decl: &ModuleDecl,
+  imports: &mut HashMap<String, ImportDesc>,
+  sources: &mut HashSet<String>,
+  module_id: &str,
+) {
+  if let ModuleDecl::Import(import_decl) = module_decl {
+    let source = import_decl.src.value.to_string();
+    sources.insert(source);
+    import_decl.specifiers.iter().for_each(|specifier| {
+      let local_name;
+      let name;
+      match specifier {
+        // import foo from './foo'
+        swc_ecma_ast::ImportSpecifier::Default(n) => {
+          local_name = n.local.sym.to_string();
+          name = "default".to_owned();
         }
-      });
-
-    statements
-      .iter()
-      .filter(|s| s.is_export_declaration)
-      .for_each(|s| {
-        let module_item: &ModuleItem = &s.node.read();
-        if let ModuleItem::ModuleDecl(module_decl) = module_item {
-          match module_decl {
-            ModuleDecl::ExportDefaultDecl(node) => {
-              // let isAnonymous = matches!(node, ExportDefaultDecl::)
-              let declared_name = match &node.decl {
-                DefaultDecl::Class(node) => node.ident.as_ref().map(|id| id.sym.to_string()),
-                DefaultDecl::Fn(node) => node.ident.as_ref().map(|id| id.sym.to_string()),
-                _ => None,
-              };
-
-              exports.insert(
-                "default".to_owned(),
-                ExportDesc::Default(DefaultExportDesc {
-                  statement: s.clone(),
-                  name: "default".to_owned(),
-                  local_name: declared_name
-                    .clone()
-                    .unwrap_or_else(|| "default".to_string()),
-                  declared_name,
-                  identifier: None,
-                  is_declaration: true,
-                  is_anonymous: false,
-                  is_modified: false,
-                }),
-              );
-            }
-            ModuleDecl::ExportDefaultExpr(node) => {
-              let is_anonymous = matches!(node.expr.as_ref(), Expr::Class(_) | Expr::Fn(_));
-              let identifier = match node.expr.as_ref() {
-                Expr::Ident(id) => Some(id.sym.to_string()),
-                _ => None,
-              };
-              exports.insert(
-                "default".to_owned(),
-                ExportDesc::Default(DefaultExportDesc {
-                  statement: s.clone(),
-                  name: "default".to_owned(),
-                  local_name: "default".to_owned(),
-                  declared_name: None,
-                  identifier,
-                  is_declaration: true,
-                  is_anonymous,
-                  is_modified: false,
-                }),
-              );
-            }
-            ModuleDecl::ExportNamed(node) => {
-              // export { foo, bar, baz }
-              node.specifiers.iter().for_each(|specifier| {
-                match specifier {
-                  ExportSpecifier::Named(s) => {
-                    let local_name = s.orig.sym.to_string();
-                    let exported_name = s
-                      .exported
-                      .as_ref()
-                      .map_or(local_name.clone(), |id| id.sym.to_string());
-                    exports.insert(
-                      exported_name.clone(),
-                      ExportDesc::Named(NamedExportDesc {
-                        local_name: local_name.clone(),
-                        exported_name: exported_name.clone(),
-                      }),
-                    );
-                    if let Some(src) = &node.src {
-                      imports.insert(
-                        exported_name.clone(),
-                        ImportDesc {
-                          source: src.value.to_string(),
-                          local_name: exported_name,
-                          name: local_name,
-                        },
-                      );
-                    };
-                  }
-                  ExportSpecifier::Namespace(_) => {
-                    // TODO:
-                  }
-                  ExportSpecifier::Default(_) => {
-                    // TODO:
-                  }
-                };
-              })
-            }
-            ModuleDecl::ExportDecl(node) => {
-              // export var foo = 42;
-              // export function foo () {}
-              // TODO: export const { name1, name2: bar } = o;
-              match &node.decl {
-                Decl::Class(node) => {
-                  let name = node.ident.sym.to_string();
-                  exports.insert(
-                    node.ident.sym.to_string(),
-                    ExportDesc::Decl(DeclExportDesc {
-                      statement: s.clone(),
-                      local_name: name,
-                    }),
-                  );
-                }
-                Decl::Fn(node) => {
-                  let name = node.ident.sym.to_string();
-                  exports.insert(
-                    node.ident.sym.to_string(),
-                    ExportDesc::Decl(DeclExportDesc {
-                      statement: s.clone(),
-                      local_name: name,
-                    }),
-                  );
-                }
-                Decl::Var(node) => {
-                  node.decls.iter().for_each(|decl| {
-                    ast::helper::collect_names_of_pat(&decl.name)
-                      .into_iter()
-                      .for_each(|name| {
-                        exports.insert(
-                          name.clone(),
-                          ExportDesc::Decl(DeclExportDesc {
-                            statement: s.clone(),
-                            local_name: name,
-                          }),
-                        );
-                      });
-                  });
-                }
-                _ => {}
-              }
-            }
-            _ => {}
-          }
+        // import { foo } from './foo'
+        // import { foo as foo2 } from './foo'
+        swc_ecma_ast::ImportSpecifier::Named(n) => {
+          local_name = n.local.sym.to_string();
+          name = n
+            .imported // => foo2 in `import { foo as foo2 } from './foo'`
+            .as_ref()
+            .map_or(local_name.clone(), |ident| ident.sym.to_string());
         }
-      });
-
-    (imports, exports)
+        // import * as foo from './foo'
+        swc_ecma_ast::ImportSpecifier::Namespace(n) => {
+          local_name = n.local.sym.to_string();
+          name = "*".to_owned()
+        }
+      }
+      imports.insert(
+        local_name.clone(),
+        ImportDesc {
+          module_id: module_id.into(),
+          source: import_decl.src.value.to_string(),
+          name,
+          local_name,
+          module: None,
+        },
+      );
+    })
   }
 }
 
-#[derive(PartialEq, Clone)]
+fn add_dynamic_import(call_exp: &CallExpr, dyn_imports: &mut Vec<DynImportDesc>) {
+  if let ExprOrSuper::Expr(exp) = &call_exp.callee {
+    if let Expr::Ident(id) = exp.as_ref() {
+      let is_callee_import = id.sym.to_string() == "import";
+      // FIXME: should warn about pattern like `import(...a)`
+      if is_callee_import {
+        if let Some(exp) = call_exp
+          .args
+          .get(0)
+          .map(|exp_or_spread| &exp_or_spread.expr)
+        {
+          if let Expr::Lit(Lit::Str(first_param)) = exp.as_ref() {
+            dyn_imports.push(DynImportDesc {
+              argument: first_param.value.to_string(),
+              id: None,
+              resolution: None,
+            })
+          } else {
+            panic!("unkown dynamic import params")
+          }
+        }
+      }
+    }
+  }
+}
+
+fn add_export(
+  module_decl: &ModuleDecl,
+  exports: &mut HashMap<String, ExportDesc>,
+  re_exports: &mut HashMap<String, ReExportDesc>,
+  export_all_sources: &mut HashSet<String>,
+  sources: &mut HashSet<String>,
+  module_id: &str,
+) {
+  match module_decl {
+    ModuleDecl::ExportDefaultDecl(node) => {
+      let identifier = match &node.decl {
+        DefaultDecl::Class(node) => node.ident.as_ref().map(|id| id.sym.to_string()),
+        DefaultDecl::Fn(node) => node.ident.as_ref().map(|id| id.sym.to_string()),
+        _ => None,
+      };
+
+      exports.insert(
+        "default".into(),
+        ExportDesc {
+          identifier,
+          local_name: "default".to_owned(),
+        },
+      );
+    }
+    ModuleDecl::ExportDefaultExpr(node) => {
+      // export default foo;
+      let identifier = match node.expr.as_ref() {
+        Expr::Ident(id) => Some(id.sym.to_string()),
+        _ => None,
+      };
+      exports.insert(
+        "default".into(),
+        ExportDesc {
+          identifier,
+          local_name: "default".into(),
+        },
+      );
+    }
+    ModuleDecl::ExportNamed(node) => {
+      node.specifiers.iter().for_each(|specifier| {
+        match specifier {
+          ExportSpecifier::Named(s) => {
+            if let Some(source_node) = &node.src {
+              // export { name } from './other'
+              let source = source_node.value.to_string();
+              sources.insert(source.clone());
+              let name = s
+                .exported
+                .as_ref()
+                .map_or(s.orig.sym.to_string(), |id| id.sym.to_string());
+              re_exports.insert(
+                name.clone(),
+                ReExportDesc {
+                  local_name: s.orig.sym.to_string(),
+                  module_id: module_id.into(),
+                  source,
+                  module: None,
+                },
+              );
+            } else {
+              // export { foo, bar, baz }
+              let local_name = s.orig.sym.to_string();
+              let exported_name = s
+                .exported
+                .as_ref()
+                .map_or(s.orig.sym.to_string(), |id| id.sym.to_string());
+              exports.insert(
+                exported_name,
+                ExportDesc {
+                  identifier: None,
+                  local_name,
+                },
+              );
+            };
+          }
+          ExportSpecifier::Namespace(s) => {
+            // export * as name from './other'
+            let source = node.src.as_ref().map(|str| str.value.to_string()).unwrap();
+            sources.insert(source.clone());
+            let name = s.name.sym.to_string();
+            re_exports.insert(
+              name.clone(),
+              ReExportDesc {
+                local_name: "*".into(),
+                module_id: module_id.into(),
+                source,
+                module: None,
+              },
+            );
+          }
+          ExportSpecifier::Default(_) => {
+            // export v from 'mod';
+            // Rollup doesn't support it.
+          }
+        };
+      })
+    }
+    ModuleDecl::ExportDecl(node) => {
+      match &node.decl {
+        Decl::Class(node) => {
+          // export class Foo {}
+          let local_name = node.ident.sym.to_string();
+          exports.insert(
+            local_name.clone(),
+            ExportDesc {
+              identifier: None,
+              local_name,
+            },
+          );
+        }
+        Decl::Fn(node) => {
+          // export function foo () {}
+          let local_name = node.ident.sym.to_string();
+          exports.insert(
+            local_name.clone(),
+            ExportDesc {
+              identifier: None,
+              local_name,
+            },
+          );
+        }
+        Decl::Var(node) => {
+          // export var { foo, bar } = ...
+          // export var foo = 1, bar = 2;
+          node.decls.iter().for_each(|decl| {
+            utils::ast::collect_names_of_pat(&decl.name)
+              .into_iter()
+              .for_each(|local_name| {
+                exports.insert(
+                  local_name.clone(),
+                  ExportDesc {
+                    identifier: None,
+                    local_name,
+                  },
+                );
+              });
+          });
+        }
+        _ => {}
+      }
+    }
+    ModuleDecl::ExportAll(node) => {
+      // export * from './other'
+      sources.insert(node.src.value.to_string());
+      export_all_sources.insert(node.src.value.to_string());
+    }
+    _ => {}
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportDesc {
+  pub module: Option<ModOrExt>,
+  pub module_id: String,
   pub source: String,
   pub name: String,
   pub local_name: String,
 }
 
-#[derive(Clone)]
-pub enum ExportDesc {
-  Default(DefaultExportDesc),
-  Named(NamedExportDesc),
-  Decl(DeclExportDesc),
-}
-
-impl ExportDesc {
-  pub fn has_identifier(&self) -> bool {
-    match self {
-      ExportDesc::Default(n) => n.identifier.is_some(),
-      _ => false,
-    }
-  }
-
-  pub fn default(self) -> Option<DefaultExportDesc> {
-    if let ExportDesc::Default(v) = self {
-      Some(v)
-    } else {
-      None
-    }
-  }
-  pub fn named(self) -> Option<NamedExportDesc> {
-    if let ExportDesc::Named(v) = self {
-      Some(v)
-    } else {
-      None
-    }
-  }
-  pub fn decl(self) -> Option<DeclExportDesc> {
-    if let ExportDesc::Decl(v) = self {
-      Some(v)
-    } else {
-      None
-    }
-  }
-}
-
-#[derive(Clone)]
-pub struct NamedExportDesc {
-  pub local_name: String,
-  pub exported_name: String,
-}
-
-#[derive(Clone)]
-pub struct DeclExportDesc {
-  pub statement: Arc<Statement>,
-  pub local_name: String,
-}
-
-#[derive(Clone)]
-pub struct DefaultExportDesc {
-  pub statement: Arc<Statement>,
-  pub name: String,
-  pub local_name: String,
-  pub declared_name: Option<String>,
-  // export default foo;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportDesc {
   pub identifier: Option<String>,
-  pub is_declaration: bool,
-  // is anonymous function
-  pub is_anonymous: bool,
-  pub is_modified: bool, // in case of `export default foo; foo = somethingElse`
+  pub local_name: String,
 }
 
-pub fn fold_export_decl_to_decl(module_item: &mut ModuleItem, module: Arc<super::Module>) {
-  if let ModuleItem::ModuleDecl(module_decl) = &module_item {
-    *module_item = match module_decl {
-      // remove export { foo, baz }
-      ModuleDecl::ExportNamed(_) => ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP })),
-      // remove `export` from `export class Foo {...}`
-      ModuleDecl::ExportDecl(export_decl) => ModuleItem::Stmt(Stmt::Decl(export_decl.decl.clone())),
-      // remove `export default` from `export default class Foo {...}`
-      ModuleDecl::ExportDefaultDecl(export_decl) => {
-        if let DefaultDecl::Class(node) = &export_decl.decl {
-          ModuleItem::Stmt(Stmt::Decl(Decl::Class(ClassDecl {
-            ident: node
-              .ident
-              .clone()
-              .unwrap_or_else(|| Ident::new(module.get_canonical_name("default").into(), DUMMY_SP)),
-            declare: false,
-            class: node.class.clone(),
-          })))
-        } else if let DefaultDecl::Fn(node) = &export_decl.decl {
-          ModuleItem::Stmt(Stmt::Decl(Decl::Fn(FnDecl {
-            ident: node
-              .ident
-              .clone()
-              .unwrap_or_else(|| Ident::new(module.get_canonical_name("default").into(), DUMMY_SP)),
-            declare: false,
-            function: node.clone().function,
-          })))
-        } else {
-          ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(export_decl.clone()))
-        }
-      }
-      ModuleDecl::ExportDefaultExpr(export_decl) => {
-        if let Expr::Arrow(node) = export_decl.expr.as_ref() {
-          ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
-            span: DUMMY_SP,
-            kind: swc_ecma_ast::VarDeclKind::Var,
-            declare: false,
-            decls: vec![VarDeclarator {
-              span: DUMMY_SP,
-              name: Pat::Ident(BindingIdent {
-                id: Ident::new(module.get_canonical_name("default").into(), DUMMY_SP),
-                type_ann: None,
-              }),
-              definite: false,
-              init: Some(Box::new(Expr::Arrow(node.clone()))),
-            }],
-          })))
-        } else {
-          ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }))
-        }
-      }
-      _ => ModuleItem::ModuleDecl(module_decl.clone()),
-    };
-  }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReExportDesc {
+  pub module: Option<ModOrExt>,
+  pub module_id: String,
+  pub local_name: String,
+  pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynImportDesc {
+  pub argument: String,
+  pub id: Option<String>,
+  pub resolution: Option<ModOrExt>,
 }
 
 pub fn parse_file(
@@ -390,8 +325,7 @@ pub fn parse_file(
   parser.parse_module()
 }
 
-#[cfg(test)]
-pub(crate) fn parse_code(code: &str) -> Result<swc_ecma_ast::Module, ()> {
+pub fn parse_code(code: &str) -> Result<swc_ecma_ast::Module, ()> {
   use swc_common::BytePos;
   let handler = Handler::with_tty_emitter(ColorConfig::Auto, true, false, None);
   let lexer = Lexer::new(
@@ -412,4 +346,55 @@ pub(crate) fn parse_code(code: &str) -> Result<swc_ecma_ast::Module, ()> {
     // Unrecoverable fatal error occurred
     e.into_diagnostic(&handler).emit()
   })
+}
+
+pub struct ModuleSourceAnalyzer {
+  pub module_id: String,
+  pub imports: HashMap<String, ImportDesc>,
+  pub exports: HashMap<String, ExportDesc>,
+  pub re_exports: HashMap<String, ReExportDesc>,
+  pub export_all_sources: HashSet<String>,
+  pub dynamic_imports: Vec<DynImportDesc>,
+  pub sources: HashSet<String>,
+}
+
+impl ModuleSourceAnalyzer {
+  fn new(module_id: String) -> Self {
+    Self {
+      module_id,
+      imports: HashMap::default(),
+      exports: HashMap::default(),
+      re_exports: HashMap::default(),
+      export_all_sources: HashSet::default(),
+      dynamic_imports: Vec::default(),
+      sources: HashSet::default(),
+    }
+  }
+}
+
+impl VisitAll for ModuleSourceAnalyzer {
+  fn visit_module_decl(&mut self, node: &ModuleDecl, _parent: &dyn Node) {
+    add_import(node, &mut self.imports, &mut self.sources, &self.module_id);
+    add_export(
+      node,
+      &mut self.exports,
+      &mut self.re_exports,
+      &mut self.export_all_sources,
+      &mut self.sources,
+      &self.module_id,
+    );
+  }
+
+  fn visit_call_expr(&mut self, node: &CallExpr, _parent: &dyn Node) {
+    add_dynamic_import(node, &mut self.dynamic_imports);
+  }
+}
+
+pub fn get_module_info_from_ast(
+  ast: &swc_ecma_ast::Module,
+  module_id: String,
+) -> ModuleSourceAnalyzer {
+  let mut m = ModuleSourceAnalyzer::new(module_id);
+  ast.visit_all_children_with(&mut m);
+  m
 }

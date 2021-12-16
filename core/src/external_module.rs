@@ -1,9 +1,27 @@
-#[derive(Debug, Clone, PartialEq)]
+use std::{collections::BTreeSet, hash::Hash};
+
+use crate::types::{shared, Shared};
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExternalModule {
-  pub name: String,
+  pub id: String,
+  pub importers: BTreeSet<String>,
+  pub dynamic_importers: BTreeSet<String>,
+  pub exec_index: usize,
 }
 impl ExternalModule {
-  pub fn new(name: String) -> Self {
-    ExternalModule { name }
+  pub fn new(id: String) -> Shared<Self> {
+    shared(ExternalModule {
+      id,
+      importers: BTreeSet::default(),
+      dynamic_importers: BTreeSet::default(),
+      exec_index: usize::MAX,
+    })
+  }
+}
+
+impl Hash for ExternalModule {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    state.write(&self.id.as_bytes());
   }
 }

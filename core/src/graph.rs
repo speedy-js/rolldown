@@ -1,205 +1,111 @@
-use std::collections::{HashMap, HashSet};
-use std::io;
-use std::sync::Arc;
-
-use ahash::RandomState;
-use once_cell::sync::Lazy;
-use swc_common::{
-  sync::{Lrc, RwLock},
-  SourceMap,
+use crate::types::{shared, NormalizedInputOptions, Shared};
+use crate::utils::execution_order::analyse_module_execution;
+use crate::utils::plugin_driver::PluginDriver;
+use crate::{external_module::ExternalModule, module::Module};
+use crate::{
+  module_loader::ModuleLoader,
+  types::{ModOrExt, UnresolvedModule},
 };
-use thiserror::Error;
-
-use crate::module::analyse::ExportDesc;
-use crate::Statement;
-use crate::{external_module::ExternalModule, hook_driver::HookDriver, module::Module};
-
-pub(crate) static SOURCE_MAP: Lazy<Lrc<SourceMap>> = Lazy::new(Default::default);
-
-#[derive(Debug, Error)]
-pub enum GraphError {
-  #[error("Entry [{0}] not found")]
-  EntryNotFound(String),
-  #[error("Bundle doesn't have any entry")]
-  NoEntry,
-  #[error("{0}")]
-  IoError(io::Error),
-  #[error("Parse module failed")]
-  ParseModuleError,
-}
-
-impl From<io::Error> for GraphError {
-  fn from(err: io::Error) -> Self {
-    Self::IoError(err)
-  }
-}
-
-#[derive(Clone)]
-struct ModuleContainer {
-  // cached module
-  modules_by_id: RwLock<HashMap<String, ModOrExt, RandomState>>,
-  internal_namespace_module_ids: HashSet<String, RandomState>,
-}
-
-impl ModuleContainer {
-  pub fn new() -> Self {
-    Self {
-      modules_by_id: RwLock::new(HashMap::default()),
-      internal_namespace_module_ids: HashSet::default(),
-    }
-  }
-
-  #[inline]
-  pub fn get_module(&self, id: &str) -> Option<ModOrExt> {
-    self.modules_by_id.borrow().get(id).cloned()
-  }
-
-  #[inline]
-  pub(crate) fn insert_module(&self, id: String, module: ModOrExt) {
-    self.modules_by_id.borrow_mut().insert(id, module);
-  }
-
-  pub fn insert_internal_namespace_module_id(&mut self, id: String) {
-    self.internal_namespace_module_ids.insert(id);
-  }
-
-  pub(crate) fn fetch_module(
-    &self,
-    source: &str,
-    importer: Option<&str>,
-    hook_driver: &HookDriver,
-  ) -> Result<ModOrExt, GraphError> {
-    hook_driver
-      .resolve_id(source, importer)
-      .map(|id| {
-        self.get_module(&id).map(Ok).unwrap_or_else(|| {
-          let source = hook_driver.load(&id).unwrap();
-          if let Ok(m) = Module::new(source, id.clone()) {
-            let module = ModOrExt::Mod(Arc::new(m));
-            self.insert_module(id, module.clone());
-            Ok(module)
-          } else {
-            Err(GraphError::ParseModuleError)
-          }
-        })
-      })
-      .unwrap_or_else(|| {
-        self.get_module(source).map(Ok).unwrap_or_else(|| {
-          let module = ModOrExt::Ext(Arc::new(ExternalModule {
-            name: source.to_owned(),
-          }));
-          self.insert_module(source.to_owned(), module.clone());
-          Ok(module)
-        })
-      })
-  }
-}
 
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Graph {
-  entry: String,
-  entry_module: Arc<Module>,
-  module_container: RwLock<ModuleContainer>,
-  hook_driver: HookDriver,
+  pub options: Shared<NormalizedInputOptions>,
+  pub entry_modules: Vec<Shared<Module>>,
+  pub module_loader: Shared<ModuleLoader>,
+  pub plugin_driver: Shared<PluginDriver>,
+  pub modules: Vec<Shared<Module>>,
+  pub external_modules: Vec<Shared<ExternalModule>>,
 }
 
 impl Graph {
-  // build a module using dependency relationship
-  pub fn new(entry: &str) -> Result<Self, GraphError> {
-    // generate the entry module
-    let hook_driver = HookDriver::new();
-    let module_container = ModuleContainer::new();
-    let entry_module = module_container
-      .fetch_module(entry, None, &hook_driver)?
-      .into_mod()
-      .expect("entry module not found");
+  pub fn new(options: NormalizedInputOptions) -> Self {
+    env_logger::init();
+
+    let options = shared(options);
+
+    let plugin_driver = PluginDriver::new(options.clone());
+    let module_container = ModuleLoader::new(plugin_driver.clone());
 
     let graph = Self {
-      entry: entry.to_owned(),
-      entry_module,
-      module_container: RwLock::new(module_container),
-      hook_driver,
+      options,
+      entry_modules: vec![],
+      module_loader: module_container,
+      plugin_driver,
+      modules: vec![],
+      external_modules: vec![],
     };
 
-    Ok(graph)
+    graph
   }
 
-  pub fn build(&self) -> Vec<Arc<Statement>> {
-    log::debug!("start build for entry {:?}", self.entry);
+  // build dependency graph via entry modules.
+  pub fn generate_module_graph(&mut self) {
 
-    if let Some(ExportDesc::Default(default_export)) = self.entry_module.exports.get("default") {
-      if let Some(ref name) = default_export.declared_name {
-        self
-          .entry_module
-          .suggest_name("default".to_owned(), name.clone())
-      } else {
-        let default_export_name = "$$legal_identifier".to_owned();
-        self
-          .entry_module
-          .suggest_name("default".to_owned(), default_export_name);
-      }
-    }
+    self.entry_modules = self.module_loader.borrow_mut().add_entry_modules(
+      &normalize_entry_modules(self.options.borrow().input.clone()),
+      true,
+    );
 
-    let statements = self.entry_module.expand_all_statements(true, self);
-    self.de_conflict();
-    self.sort();
-    statements
-  }
-
-  fn de_conflict(&self) {}
-
-  fn sort(&self) {}
-
-  pub fn fetch_module(&self, source: &str, importer: Option<&str>) -> Result<ModOrExt, GraphError> {
     self
-      .module_container
+      .module_loader
       .borrow()
-      .fetch_module(source, importer, &self.hook_driver)
+      .modules_by_id
+      .values()
+      .for_each(|mod_or_ext| match mod_or_ext {
+        ModOrExt::Ext(module) => {
+          self.external_modules.push(module.clone());
+        }
+        ModOrExt::Mod(module) => {
+          self.modules.push(module.clone());
+        }
+      });
   }
 
-  pub fn get_module(&self, id: &str) -> ModOrExt {
-    self.module_container.borrow().get_module(id).unwrap()
+  // start build phrase
+  pub fn build(&mut self) {
+    self.plugin_driver.borrow().build_start(&self.options.borrow());
+
+    self.generate_module_graph();
+
+    self.sort_modules();
+
+    self.include_statements();
   }
 
-  pub fn insert_internal_namespace_module_id(&self, id: String) {
-    self
-      .module_container
-      .borrow_mut()
-      .insert_internal_namespace_module_id(id);
-  }
-}
-
-#[derive(Clone)]
-pub enum ModOrExt {
-  Mod(Arc<Module>),
-  Ext(Arc<ExternalModule>),
-}
-
-impl ModOrExt {
-  #[inline]
-  pub fn is_mod(&self) -> bool {
-    matches!(self, ModOrExt::Mod(_))
+  fn include_statements(&self) {
+    // TODO: collect statements via entry modules  and tree-shaking.
   }
 
-  #[inline]
-  pub fn is_ext(&self) -> bool {
-    !self.is_mod()
-  }
+  fn sort_modules(&mut self) {
+    let (cycle_paths, ordered_modules) = analyse_module_execution(&self.entry_modules);
 
-  pub fn into_mod(self) -> Option<Arc<Module>> {
-    if let ModOrExt::Mod(m) = self {
-      Some(m)
-    } else {
-      None
-    }
-  }
+    cycle_paths.iter().for_each(|path| {
+      panic!("cyclePaths {:#?}", path);
+    });
 
-  pub fn into_ext(self) -> Option<Arc<ExternalModule>> {
-    if let ModOrExt::Ext(m) = self {
-      Some(m)
-    } else {
-      None
-    }
+    self.modules = ordered_modules;
+
+    println!("orderedModules {:#?}", self.modules)
+    // (cyclePaths, orderedModules)
   }
 }
+
+pub fn normalize_entry_modules(
+  entry_modules: Vec<(Option<String>, String)>,
+) -> Vec<UnresolvedModule> {
+  entry_modules
+    .into_iter()
+    .map(|(name, id)| {
+      UnresolvedModule {
+        file_name: None,
+        id,
+        // implicitlyLoadedAfter: [],
+        importer: None,
+        name,
+      }
+    })
+    .collect()
+}
+
+
