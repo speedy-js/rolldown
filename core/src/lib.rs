@@ -4,3 +4,5 @@ pub mod module;
 pub mod statement;
 pub mod types;
 pub mod utils;
+pub mod chunk;
+pub mod bundle;

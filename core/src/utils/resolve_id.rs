@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use log::debug;
-
 use crate::types::ResolvedId;
 
 use super::plugin_driver::PluginDriver;
@@ -24,10 +22,10 @@ pub fn resolve_id(
       false,
     )
   };
-  debug!(
-    "resolve {} with importer {:?} got {:?}",
-    source, importer, res
-  );
+  // debug!(
+  //   "resolve {} with importer {:?} got {:?}",
+  //   source, importer, res
+  // );
   res
 }
 

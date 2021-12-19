@@ -1,21 +1,17 @@
-use std::{collections::BTreeSet, hash::Hash};
+use std::{hash::Hash};
 
 use crate::graph::DepNode;
 
 #[derive(PartialEq, Eq, Clone)]
 pub struct ExternalModule {
   pub id: String,
-  pub importers: BTreeSet<String>,
-  pub dynamic_importers: BTreeSet<String>,
-  pub exec_index: usize,
+  pub module_side_effects: bool,
 }
 impl ExternalModule {
   pub fn new(id: String) -> Self {
     ExternalModule {
       id,
-      importers: BTreeSet::default(),
-      dynamic_importers: BTreeSet::default(),
-      exec_index: usize::MAX,
+      module_side_effects: true,
     }
   }
 }

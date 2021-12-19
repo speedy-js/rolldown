@@ -1,25 +1,20 @@
-use std::borrow::BorrowMut;
-use std::collections::{HashMap};
-use std::sync::RwLock;
 use petgraph::algo::toposort;
-use petgraph::visit::{depth_first_search, DfsEvent, Control};
+use petgraph::visit::{depth_first_search, Control, DfsEvent};
+use std::collections::HashMap;
 
-use rayon::{prelude::*};
-use petgraph::prelude::*;
 
 use once_cell::sync::Lazy;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use swc_common::sync::Lrc;
 use swc_common::SourceMap;
-use swc_ecma_visit::{VisitAllWith};
 
 use crate::external_module::ExternalModule;
 use crate::module::Module;
 use crate::statement::analyse::relationship_analyzer::{
   parse_file, DynImportDesc, ImportDesc, ReExportDesc, RelationshipAnalyzer,
 };
-use crate::statement::{Statement};
+use crate::statement::Statement;
 use crate::types::ResolvedId;
 use crate::utils::resolve_id::resolve_id;
 
@@ -29,7 +24,6 @@ pub(crate) static SOURCE_MAP: Lazy<Lrc<SourceMap>> = Lazy::new(Default::default)
 
 pub enum DepNode {
   Mod(Module),
-  Stmt(Statement),
   Ext(ExternalModule),
 }
 
@@ -39,16 +33,16 @@ pub enum Rel {
   DynImport(DynImportDesc),
   ReExport(ReExportDesc),
   ReExportAll,
-  Contain,
 }
 
-type DepGraph = Graph<DepNode, Rel>;
+pub type DepGraph = Graph<DepNode, Rel>;
 
 #[non_exhaustive]
 pub struct GraphContainer {
   pub entry_path: String,
   pub graph: DepGraph,
   pub entries: Vec<NodeIndex>,
+  pub ordered_modules: Vec<NodeIndex>,
 }
 
 impl GraphContainer {
@@ -61,6 +55,7 @@ impl GraphContainer {
       entry_path: entry,
       graph: graph,
       entries: Default::default(),
+      ordered_modules: Default::default(),
     };
 
     graph_container
@@ -74,31 +69,45 @@ impl GraphContainer {
       graph: &mut self.graph,
       module_id_to_node_idx_map: &mut module_id_to_node_idx_map,
     };
-    analyse_module(&mut ctx, entry_module, None, Rel::Contain)
+    analyse_module(&mut ctx, entry_module, None, Rel::ReExportAll)
   }
 
   pub fn build(&mut self) {
     self.generate_module_graph();
 
-    // self.sort_modules();
+    self.sort_modules();
 
-    // self.include_statements(); 
+    // self.include_statements();
   }
 
-//   pub fn sort_modules(&self) {
-//     let mut stack = vec![];
-//     depth_first_search(&self.graph, self.entries, |evt| {
-//       match evt {
-//         DfsEvent::Discover(idx) {
-//           stack.push(evt);
-//         }
-//       }
-//     });
-//   }
+  pub fn sort_modules(&mut self) {  
+    // FIXME: handle cycle import
+    let ordered = toposort(&self.graph, None).unwrap();
+    self.ordered_modules = ordered;
+    // debug!("ordered {:#?}", ordered);
+    // depth_first_search(&self.graph, self.entries, |evt| {
+    //   match evt {
+    //     DfsEvent::Discover(idx) {
+    //       stack.push(evt);
+    //     }
+    //   }
+    // });
+  }
 }
 
-fn analyse_module(ctx: &mut AnalyseContext, module: Module, parent: Option<NodeIndex>, rel: Rel) {
+fn analyse_module(
+  ctx: &mut AnalyseContext,
+  mut module: Module,
+  parent: Option<NodeIndex>,
+  rel: Rel,
+) {
   let source = std::fs::read_to_string(&module.id).unwrap();
+  module.set_source(source.clone());
+  let analyzers = module
+    .statements
+    .iter()
+    .map(|s| s.analyse())
+    .collect::<Vec<RelationshipAnalyzer>>();
   let module_id = module.id.clone();
 
   let node_idx;
@@ -109,7 +118,9 @@ fn analyse_module(ctx: &mut AnalyseContext, module: Module, parent: Option<NodeI
   } else {
     has_seen = false;
     node_idx = ctx.graph.add_node(module.into());
-    ctx.module_id_to_node_idx_map.insert(module_id.clone(), node_idx.clone());
+    ctx
+      .module_id_to_node_idx_map
+      .insert(module_id.clone(), node_idx.clone());
   }
 
   if let Some(parent) = parent {
@@ -117,9 +128,9 @@ fn analyse_module(ctx: &mut AnalyseContext, module: Module, parent: Option<NodeI
   }
 
   if !has_seen {
-    parse_to_statements(source, module_id.clone())
-    .into_iter()
-    .for_each(|stmt| analyse_statement(ctx, stmt, &module_id, node_idx.clone()));
+    analyzers
+      .into_iter()
+      .for_each(|analyzer| analyse_statement(ctx, analyzer, &module_id, node_idx.clone()));
   }
 }
 
@@ -140,18 +151,10 @@ fn analyse_external_module(
 
 fn analyse_statement(
   ctx: &mut AnalyseContext,
-  mut stmt: Statement,
+  relationship_analyzer: RelationshipAnalyzer,
   module_id: &str,
   parent: NodeIndex,
 ) {
-  let mut relationship_analyzer = RelationshipAnalyzer::new();
-  stmt
-    .node
-    .visit_all_children_with(&mut relationship_analyzer);
-  stmt.exports = relationship_analyzer.exports;
-  let idx = ctx.graph.add_node(stmt.into());
-  ctx.graph.add_edge(parent, idx, Rel::Contain);
-
   relationship_analyzer
     .imports
     .into_values()
@@ -160,7 +163,7 @@ fn analyse_statement(
       let unresolved_id = &imp.source;
       let resolved_id = resolve_id(unresolved_id, Some(module_id), false);
       let mod_or_ext = resove_module_by_resolved_id(resolved_id);
-      analyse_mod_or_ext(ctx, mod_or_ext, idx, Rel::Import(imp));
+      analyse_mod_or_ext(ctx, mod_or_ext, parent, Rel::Import(imp));
     });
 
   relationship_analyzer
@@ -170,7 +173,7 @@ fn analyse_statement(
       let unresolved_id = &dyn_imp.argument;
       let resolved_id = resolve_id(unresolved_id, Some(module_id), false);
       let mod_or_ext = resove_module_by_resolved_id(resolved_id);
-      analyse_mod_or_ext(ctx, mod_or_ext, idx, Rel::DynImport(dyn_imp));
+      analyse_mod_or_ext(ctx, mod_or_ext, parent, Rel::DynImport(dyn_imp));
     });
 
   relationship_analyzer
@@ -181,18 +184,18 @@ fn analyse_statement(
       let unresolved_id = &re_expr.source;
       let resolved_id = resolve_id(unresolved_id, Some(module_id), false);
       let mod_or_ext = resove_module_by_resolved_id(resolved_id);
-      analyse_mod_or_ext(ctx, mod_or_ext, idx, Rel::ReExport(re_expr));
+      analyse_mod_or_ext(ctx, mod_or_ext, parent, Rel::ReExport(re_expr));
     });
 
-    relationship_analyzer
-      .export_all_sources
-      .into_iter()
-      .for_each(|source| {
-        let unresolved_id = &source;
-        let resolved_id = resolve_id(unresolved_id, Some(module_id), false);
-        let mod_or_ext = resove_module_by_resolved_id(resolved_id);
-        analyse_mod_or_ext(ctx, mod_or_ext, idx, Rel::ReExportAll);
-      });
+  relationship_analyzer
+    .export_all_sources
+    .into_iter()
+    .for_each(|source| {
+      let unresolved_id = &source;
+      let resolved_id = resolve_id(unresolved_id, Some(module_id), false);
+      let mod_or_ext = resove_module_by_resolved_id(resolved_id);
+      analyse_mod_or_ext(ctx, mod_or_ext, parent, Rel::ReExportAll);
+    });
 }
 
 fn analyse_mod_or_ext(ctx: &mut AnalyseContext, mod_or_ext: ModOrExt, parent: NodeIndex, rel: Rel) {
