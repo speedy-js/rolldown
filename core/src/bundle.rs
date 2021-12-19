@@ -3,7 +3,7 @@ use std::{collections::HashMap, io::Write};
 use swc_ecma_ast::EsVersion;
 use swc_ecma_codegen::text_writer::JsWriter;
 
-use crate::{Module, chunk::Chunk, graph, module_loader, types::Shared};
+use crate::{chunk::Chunk, graph, module_loader, types::Shared, Module};
 
 // #[derive(Debug, Error)]
 // pub enum BundleError {
@@ -38,7 +38,7 @@ impl Bundle {
     Self { graph }
   }
 
-  pub fn generate(&self)  -> String {
+  pub fn generate(&self) -> String {
     self.generate_chunks().render()
   }
 

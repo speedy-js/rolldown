@@ -1,5 +1,5 @@
 pub struct NormalizedOutputOptions {
-    // --- Options Rolldown doesn't need to be supported
+  // --- Options Rolldown doesn't need to be supported
 // /** @deprecated Use the "renderDynamicImport" plugin hook instead. */
 // dynamicImportFunction: string | undefined;
 
@@ -47,7 +47,7 @@ pub struct NormalizedOutputOptions {
 }
 
 impl Default for NormalizedOutputOptions {
-    fn default() -> Self {
-        Self {}
-    }
+  fn default() -> Self {
+    Self {}
+  }
 }
