@@ -1,6 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 
-use crate::{chunk::Chunk, graph, types::Shared, Module};
+use swc_ecma_ast::EsVersion;
+use swc_ecma_codegen::text_writer::JsWriter;
+
+use crate::{Module, chunk::Chunk, graph, module_loader, types::Shared};
 
 // #[derive(Debug, Error)]
 // pub enum BundleError {
@@ -27,24 +30,28 @@ use crate::{chunk::Chunk, graph, types::Shared, Module};
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Bundle {
-  pub graph: graph::Graph,
+  pub graph: graph::GraphContainer,
 }
 
 impl Bundle {
-  pub fn new(graph: graph::Graph) -> Self {
+  pub fn new(graph: graph::GraphContainer) -> Self {
     Self { graph }
   }
 
-  pub fn generate(&self) {
-
-    let _chunks = self.generate_chunks();
+  pub fn generate(&self)  -> String {
+    self.generate_chunks().render()
   }
 
-  pub fn generate_chunks(&self) -> Vec<Chunk> {
-    let chunks = vec![];
+  pub fn generate_chunks(&self) -> Chunk {
+    let chunk = Chunk {
+      entry_modules: vec![],
+      id: None,
+      file_name: None,
+      ordered_modules: self.graph.modules.clone(),
+    };
     let _chunk_by_module: HashMap<Shared<Module>, Chunk> = HashMap::default();
 
-    chunks
+    chunk
   }
 
   pub fn add_manual_chunks(&self) -> HashMap<Shared<Module>, String> {

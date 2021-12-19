@@ -1,4 +1,5 @@
 
 import {  add, sub } from './calc'
-
-import { } from './foo'
+import preact from 'preact'
+import {   } from './foo'
+import('./bar')
