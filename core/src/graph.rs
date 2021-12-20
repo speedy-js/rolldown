@@ -1,7 +1,6 @@
 use petgraph::algo::toposort;
-use petgraph::visit::{depth_first_search, Control, DfsEvent};
+use petgraph::visit::{depth_first_search, Control, DfsEvent, DfsPostOrder, IntoNodeReferences};
 use std::collections::HashMap;
-
 
 use once_cell::sync::Lazy;
 use petgraph::graph::NodeIndex;
@@ -69,7 +68,9 @@ impl GraphContainer {
       graph: &mut self.graph,
       module_id_to_node_idx_map: &mut module_id_to_node_idx_map,
     };
-    analyse_module(&mut ctx, entry_module, None, Rel::ReExportAll)
+
+    let entry = analyse_module(&mut ctx, entry_module, None, Rel::ReExportAll);
+    self.entries.push(entry)
   }
 
   pub fn build(&mut self) {
@@ -77,21 +78,26 @@ impl GraphContainer {
 
     self.sort_modules();
 
-    // self.include_statements();
+    self.include_statements();
   }
 
-  pub fn sort_modules(&mut self) {  
-    // FIXME: handle cycle import
-    let ordered = toposort(&self.graph, None).unwrap();
-    self.ordered_modules = ordered;
-    // debug!("ordered {:#?}", ordered);
-    // depth_first_search(&self.graph, self.entries, |evt| {
-    //   match evt {
-    //     DfsEvent::Discover(idx) {
-    //       stack.push(evt);
-    //     }
-    //   }
-    // });
+  pub fn include_statements(&mut self) {
+    // TODO: tree-shaking
+    self.graph.node_indices().into_iter().for_each(|idx| {
+      if let DepNode::Mod(m) = &mut self.graph[idx] {
+        m.include_all();
+      }
+    });
+  }
+
+  pub fn sort_modules(&mut self) {
+    let mut dfs = DfsPostOrder::new(&self.graph, self.entries[0]);
+    let mut ordered_modules = vec![];
+    // FIXME: is this correct?
+    while let Some(node) = dfs.next(&self.graph) {
+      ordered_modules.push(node);
+    }
+    self.ordered_modules = ordered_modules;
   }
 }
 
@@ -100,7 +106,7 @@ fn analyse_module(
   mut module: Module,
   parent: Option<NodeIndex>,
   rel: Rel,
-) {
+) -> NodeIndex {
   let source = std::fs::read_to_string(&module.id).unwrap();
   module.set_source(source.clone());
   let analyzers = module
@@ -132,6 +138,8 @@ fn analyse_module(
       .into_iter()
       .for_each(|analyzer| analyse_statement(ctx, analyzer, &module_id, node_idx.clone()));
   }
+
+  node_idx
 }
 
 struct AnalyseContext<'me> {
@@ -201,17 +209,8 @@ fn analyse_statement(
 fn analyse_mod_or_ext(ctx: &mut AnalyseContext, mod_or_ext: ModOrExt, parent: NodeIndex, rel: Rel) {
   match mod_or_ext {
     ModOrExt::Ext(ext) => analyse_external_module(ctx, ext, parent, rel),
-    ModOrExt::Mod(m) => analyse_module(ctx, m, Some(parent), rel),
+    ModOrExt::Mod(m) => {analyse_module(ctx, m, Some(parent), rel);},
   }
-}
-
-fn parse_to_statements(source: String, id: String) -> Vec<Statement> {
-  let ast = parse_file(source, id, &SOURCE_MAP).unwrap();
-  ast
-    .body
-    .into_iter()
-    .map(|node| Statement::new(node))
-    .collect()
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]

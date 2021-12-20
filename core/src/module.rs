@@ -1,6 +1,6 @@
 use std::{collections::HashMap, hash::Hash};
-
-use crate::{graph::{DepNode, SOURCE_MAP}, statement::{self, Statement, analyse::relationship_analyzer::{ExportDesc, parse_file}}};
+use rayon::prelude::*;
+use crate::{graph::{DepNode, SOURCE_MAP}, statement::{self, Statement, analyse::{fold_export_decl_to_decl, relationship_analyzer::{parse_file, ExportDesc}}}};
 
 type StatementIndex = usize;
 #[derive(Clone, PartialEq, Eq)]
@@ -17,7 +17,11 @@ pub struct Module {
 
 impl std::fmt::Debug for Module {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_tuple("Module").field(&self.id).finish()
+    f.debug_struct("Module")
+      .field("id", &self.id)
+      .field("define", &self.definitions.keys())
+      .field("final_names", &self.final_names)
+      .finish()
   }
 }
 
@@ -41,8 +45,15 @@ impl Module {
     }
   }
 
+  pub fn include_all(&mut self) {
+    self.statements.par_iter_mut().for_each(|s| {
+      s.is_included = true;
+    });
+    self.is_included = true;
+  }
+
   pub fn set_source(&mut self, source: String) {
-    let statements =  parse_to_statements(source, self.id.clone());
+    let statements = parse_to_statements(source, self.id.clone());
 
     statements.iter().enumerate().for_each(|(idx, s)| {
       s.defines.iter().for_each(|s| {
@@ -57,9 +68,20 @@ impl Module {
           vec.push(idx);
         }
       });
-
     });
     self.statements = statements;
+  }
+
+  pub fn render(&self) -> Vec<Statement> {
+    self
+      .statements
+      .iter()
+      .filter_map(|s| if s.is_included { Some(s.clone()) } else { None })
+      .map(|mut stmt| {
+        fold_export_decl_to_decl(&mut stmt.node);
+        stmt
+      })
+      .collect()
   }
 }
 
@@ -68,7 +90,6 @@ impl Hash for Module {
     state.write(&self.id.as_bytes());
   }
 }
-
 
 fn parse_to_statements(source: String, id: String) -> Vec<Statement> {
   let ast = parse_file(source, id, &SOURCE_MAP).unwrap();
