@@ -1,6 +1,31 @@
-use std::{collections::HashMap, hash::Hash};
+use crate::module::symbol_resolver::SymbolResolver;
+use crate::{
+  graph::{DepNode, SOURCE_MAP},
+  statement::{
+    analyse::{
+      fold_export_decl_to_decl,
+      relationship_analyzer::{parse_file, ExportDesc},
+    },
+    Statement,
+  },
+};
 use rayon::prelude::*;
-use crate::{graph::{DepNode, SOURCE_MAP}, statement::{self, Statement, analyse::{fold_export_decl_to_decl, relationship_analyzer::{parse_file, ExportDesc}}}};
+use swc_atoms::JsWord;
+use swc_ecma_ast::Ident;
+use swc_ecma_visit::{FoldWith, VisitMut, VisitMutWith, as_folder};
+use std::{
+  collections::{HashMap},
+  hash::Hash,
+};
+use swc_common::{Mark, SyntaxContext};
+
+
+use self::renamer::Renamer;
+use self::scope::{Scope, ScopeKind};
+
+pub mod scope;
+pub mod symbol_resolver;
+pub mod renamer;
 
 type StatementIndex = usize;
 #[derive(Clone, PartialEq, Eq)]
@@ -12,15 +37,16 @@ pub struct Module {
   pub modifications: HashMap<String, Vec<StatementIndex>>,
   pub exports: HashMap<String, ExportDesc>,
   pub is_included: bool,
-  pub final_names: HashMap<String, String>,
+  pub need_renamed: HashMap<JsWord, JsWord>,
+  pub scope: Scope,
 }
 
 impl std::fmt::Debug for Module {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("Module")
       .field("id", &self.id)
-      .field("define", &self.definitions.keys())
-      .field("final_names", &self.final_names)
+      .field("declared", &self.scope.declared_symbols.keys().map(|s| s.to_string()).collect::<Vec<String>>())
+      .field("need_renamed", &self.need_renamed)
       .finish()
   }
 }
@@ -40,8 +66,9 @@ impl Module {
       definitions: Default::default(),
       modifications: Default::default(),
       exports: Default::default(),
-      final_names: Default::default(),
+      need_renamed: Default::default(),
       is_included: false,
+      scope: Scope::new(ScopeKind::Fn, Mark::fresh(Mark::root())),
     }
   }
 
@@ -53,7 +80,23 @@ impl Module {
   }
 
   pub fn set_source(&mut self, source: String) {
-    let statements = parse_to_statements(source, self.id.clone());
+    let mut ast = parse_file(source, &self.id, &SOURCE_MAP).unwrap();
+
+    ast.visit_mut_children_with(&mut ClearMark);
+
+    let mut symbol_declator = SymbolResolver {
+      stacks: vec![self.scope.clone()],
+      reuse_scope: false,
+    };
+    ast.visit_mut_children_with(&mut symbol_declator);
+
+    self.scope = symbol_declator.into_cur_scope();
+
+    let statements = ast
+      .body
+      .into_iter()
+      .map(|node| Statement::new(node))
+      .collect::<Vec<Statement>>();
 
     statements.iter().enumerate().for_each(|(idx, s)| {
       s.defines.iter().for_each(|s| {
@@ -70,6 +113,16 @@ impl Module {
       });
     });
     self.statements = statements;
+  }
+
+  pub fn rename(&mut self) {
+    self.statements.par_iter_mut().for_each(|stmt| {
+      let mut renamer = Renamer {
+        ctxt_mapping: &self.scope.declared_symbols,
+        mapping: &self.need_renamed,
+      };
+      stmt.node.visit_mut_with(&mut renamer);
+    });
   }
 
   pub fn render(&self) -> Vec<Statement> {
@@ -91,11 +144,11 @@ impl Hash for Module {
   }
 }
 
-fn parse_to_statements(source: String, id: String) -> Vec<Statement> {
-  let ast = parse_file(source, id, &SOURCE_MAP).unwrap();
-  ast
-    .body
-    .into_iter()
-    .map(|node| Statement::new(node))
-    .collect()
+#[derive(Clone, Copy)]
+struct ClearMark;
+impl VisitMut for ClearMark {
+
+  fn visit_mut_ident(&mut self, ident: &mut Ident) {
+    ident.span.ctxt = SyntaxContext::empty();
+  }
 }

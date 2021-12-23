@@ -269,12 +269,12 @@ pub struct DynImportDesc {
 
 pub fn parse_file(
   source_code: String,
-  filename: String,
+  filename: &str,
   src_map: &Lrc<SourceMap>,
 ) -> Result<swc_ecma_ast::Module, swc_ecma_parser::error::Error> {
   let handler = Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(src_map.clone()));
-  let p = Path::new(filename.as_str());
-  let fm = src_map.new_source_file(FileName::Custom(filename.clone()), source_code);
+  let p = Path::new(filename);
+  let fm = src_map.new_source_file(FileName::Custom(filename.to_owned()), source_code);
   let ext = p.extension().and_then(|ext| ext.to_str()).unwrap_or("js");
   let syntax = if ext == "ts" || ext == "tsx" {
     Syntax::Typescript(TsConfig {

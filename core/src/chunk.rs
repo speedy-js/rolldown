@@ -1,15 +1,17 @@
 use std::collections::{HashMap, HashSet};
 
-use log::debug;
-use petgraph::graph::NodeIndex;
-use rayon::prelude::*;
-use swc_ecma_ast::EsVersion;
-use swc_ecma_codegen::text_writer::JsWriter;
-
 use crate::{
-  graph::{DepGraph, DepNode},
+  graph::{DepGraph, DepNode, Rel},
+  module::Module,
   statement::{analyse::fold_export_decl_to_decl, Statement},
 };
+use log::debug;
+use petgraph::visit::EdgeRef;
+use petgraph::{graph::NodeIndex, visit::IntoEdgesDirected, EdgeDirection};
+use rayon::prelude::*;
+use swc_atoms::JsWord;
+use swc_ecma_ast::EsVersion;
+use swc_ecma_codegen::text_writer::JsWriter;
 
 pub struct Chunk {
   pub order_modules: Vec<NodeIndex>,
@@ -28,51 +30,54 @@ impl Chunk {
     Self { order_modules }
   }
 
-  // pub fn deconflict(&self, graph: &mut DepGraph) {
-  //   // TODO: replace name
-  //   let mut definers: HashMap<String, Vec<NodeIndex>> = HashMap::new();
-  //   let mut conflicted_names: HashSet<String> = Default::default();
+  pub fn deconflict(&self, graph: &mut DepGraph) {
+    let mut definers = HashMap::new();
+    let mut conflicted_names = HashSet::new();
 
-  //   self.order_modules.iter().for_each(|idx| {
-  //     if let DepNode::Mod(module) = &graph[*idx] {
-  //       module.definitions.keys().for_each(|name| {
-  //         if definers.contains_key(name) {
-  //           conflicted_names.insert(name.clone());
-  //         } else {
-  //           definers.insert(name.clone(), vec![]);
-  //         }
+    self.order_modules.iter().for_each(|idx| {
+      if let DepNode::Mod(module) = &graph[*idx] {
+        module.scope.declared_symbols.keys().for_each(|name| {
+          if definers.contains_key(name) {
+            conflicted_names.insert(name.clone());
+          } else {
+            definers.insert(name.clone(), vec![]);
+          }
 
-  //         definers.get_mut(name).unwrap().push(*idx);
-  //       });
-  //     }
-  //   });
+          definers.get_mut(name).unwrap().push(*idx);
+        });
+      }
+    });
 
-  //   conflicted_names.clone().iter().for_each(|name| {
-  //     let module_idxs = definers.get(name).unwrap();
+    conflicted_names.clone().iter().for_each(|name| {
+      let module_idxs = definers.get(name).unwrap();
 
-  //     module_idxs.iter()
-  //       .enumerate()
-  //       .for_each(|(cnt, idx)| {
-  //         if cnt == 0 { return };
+      module_idxs.iter().enumerate().for_each(|(cnt, idx)| {
+        if let DepNode::Mod(module) = &mut graph[*idx] {
+          let mut safe_name: JsWord = format!("{}${}", name.to_string(), cnt).into();
+          while conflicted_names.contains(&safe_name) {
+            safe_name = format!("{}_", safe_name.to_string()).into();
+          }
 
-  //         if let DepNode::Mod(module) = &mut graph[*idx] {
-  //           let mut safe_name = format!("{}${}", name, cnt);
-  //           while conflicted_names.contains(&safe_name) {
-  //             safe_name.push_str("_");
-  //           }
+          conflicted_names.insert(safe_name.clone());
 
-  //           conflicted_names.insert(safe_name.clone());
+          module.need_renamed.insert(name.clone(), safe_name);
+        }
+      })
+    });
 
-  //           module.final_names.insert(name.clone(), safe_name);
-  //         }
-  //       })
-  //   });
+    definers.into_iter().for_each(|(name, idxs)| {
+      idxs.into_iter().for_each(|idx| {
+        if let DepNode::Mod(module) = &mut graph[idx] {
+          module.rename();
+        }
+      });
+    });
 
-  //   debug!("conlicted_names {:#?}", conflicted_names);
-  // }
+    debug!("conlicted_names {:#?}", conflicted_names);
+  }
 
   pub fn render(&self, graph: &mut DepGraph) -> String {
-    // self.deconflict(graph);
+    self.deconflict(graph);
 
     let mut output = Vec::new();
 

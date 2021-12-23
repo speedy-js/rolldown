@@ -1,4 +1,5 @@
 use petgraph::algo::toposort;
+use petgraph::dot::Dot;
 use petgraph::visit::{depth_first_search, Control, DfsEvent, DfsPostOrder, IntoNodeReferences};
 use std::collections::HashMap;
 
@@ -6,7 +7,7 @@ use once_cell::sync::Lazy;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use swc_common::sync::Lrc;
-use swc_common::SourceMap;
+use swc_common::{Globals, Mark, SourceMap, GLOBALS};
 
 use crate::external_module::ExternalModule;
 use crate::module::Module;
@@ -42,6 +43,7 @@ pub struct GraphContainer {
   pub graph: DepGraph,
   pub entries: Vec<NodeIndex>,
   pub ordered_modules: Vec<NodeIndex>,
+  // pub globals: Globals,
 }
 
 impl GraphContainer {
@@ -50,14 +52,16 @@ impl GraphContainer {
 
     let graph = Graph::default();
 
-    let graph_container = Self {
+    // let globals = Globals::new();
+
+    let s = Self {
       entry_path: entry,
-      graph: graph,
+      graph,
       entries: Default::default(),
       ordered_modules: Default::default(),
+      // globals,
     };
-
-    graph_container
+    s
   }
 
   // build dependency graph via entry modules.
@@ -68,17 +72,25 @@ impl GraphContainer {
       graph: &mut self.graph,
       module_id_to_node_idx_map: &mut module_id_to_node_idx_map,
     };
-
     let entry = analyse_module(&mut ctx, entry_module, None, Rel::ReExportAll);
     self.entries.push(entry)
   }
 
   pub fn build(&mut self) {
-    self.generate_module_graph();
+    let globals = Globals::new();
 
-    self.sort_modules();
+    GLOBALS.set(&globals, || {
+      self.generate_module_graph();
 
-    self.include_statements();
+      self.sort_modules();
+
+      self.include_statements();
+    });
+
+    println!(
+      "entry_modules {:?}",
+      Dot::new(&self.graph)
+    )
   }
 
   pub fn include_statements(&mut self) {
@@ -209,7 +221,9 @@ fn analyse_statement(
 fn analyse_mod_or_ext(ctx: &mut AnalyseContext, mod_or_ext: ModOrExt, parent: NodeIndex, rel: Rel) {
   match mod_or_ext {
     ModOrExt::Ext(ext) => analyse_external_module(ctx, ext, parent, rel),
-    ModOrExt::Mod(m) => {analyse_module(ctx, m, Some(parent), rel);},
+    ModOrExt::Mod(m) => {
+      analyse_module(ctx, m, Some(parent), rel);
+    }
   }
 }
 

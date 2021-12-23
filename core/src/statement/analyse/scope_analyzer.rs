@@ -211,5 +211,4 @@ impl Visit for ScopeAnalyser {
     node.visit_children_with(self);
     self.scope = prev_scope;
   }
-  // --- end for
 }
