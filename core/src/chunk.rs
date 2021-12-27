@@ -1,13 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-  graph::{DepGraph, DepNode, Rel},
-  module::Module,
-  statement::{analyse::fold_export_decl_to_decl, Statement},
+  graph::{DepGraph, DepNode},
+  statement::{Statement},
 };
 use log::debug;
-use petgraph::visit::EdgeRef;
-use petgraph::{graph::NodeIndex, visit::IntoEdgesDirected, EdgeDirection};
+
+use petgraph::{graph::NodeIndex};
 use rayon::prelude::*;
 use swc_atoms::JsWord;
 use swc_ecma_ast::EsVersion;
@@ -50,22 +49,25 @@ impl Chunk {
 
     conflicted_names.clone().iter().for_each(|name| {
       let module_idxs = definers.get(name).unwrap();
+      if module_idxs.len() > 1 {
+        module_idxs.iter().enumerate().for_each(|(cnt, idx)| {
+          if let DepNode::Mod(module) = &mut graph[*idx] {
+            if !module.is_entry {
+              let mut safe_name: JsWord = format!("{}${}", name.to_string(), cnt).into();
+              while conflicted_names.contains(&safe_name) {
+                safe_name = format!("{}_", safe_name.to_string()).into();
+              }
 
-      module_idxs.iter().enumerate().for_each(|(cnt, idx)| {
-        if let DepNode::Mod(module) = &mut graph[*idx] {
-          let mut safe_name: JsWord = format!("{}${}", name.to_string(), cnt).into();
-          while conflicted_names.contains(&safe_name) {
-            safe_name = format!("{}_", safe_name.to_string()).into();
+              conflicted_names.insert(safe_name.clone());
+
+              module.need_renamed.insert(name.clone(), safe_name);
+            }
           }
-
-          conflicted_names.insert(safe_name.clone());
-
-          module.need_renamed.insert(name.clone(), safe_name);
-        }
-      })
+        })
+      }
     });
 
-    definers.into_iter().for_each(|(name, idxs)| {
+    definers.into_iter().for_each(|(_name, idxs)| {
       idxs.into_iter().for_each(|idx| {
         if let DepNode::Mod(module) = &mut graph[idx] {
           module.rename();

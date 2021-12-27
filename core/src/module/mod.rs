@@ -1,18 +1,17 @@
-use crate::module::symbol_resolver::SymbolResolver;
+use crate::scanner::Scanner;
+use crate::scanner::rel::ExportDesc;
+use crate::scanner::scope::{Scope, ScopeKind};
+use crate::utils::parse_file;
 use crate::{
   graph::{DepNode, SOURCE_MAP},
   statement::{
-    analyse::{
-      fold_export_decl_to_decl,
-      relationship_analyzer::{parse_file, ExportDesc},
-    },
     Statement,
   },
 };
 use rayon::prelude::*;
 use swc_atoms::JsWord;
 use swc_ecma_ast::Ident;
-use swc_ecma_visit::{FoldWith, VisitMut, VisitMutWith, as_folder};
+use swc_ecma_visit::{VisitMut, VisitMutWith};
 use std::{
   collections::{HashMap},
   hash::Hash,
@@ -21,24 +20,20 @@ use swc_common::{Mark, SyntaxContext};
 
 
 use self::renamer::Renamer;
-use self::scope::{Scope, ScopeKind};
 
-pub mod scope;
-pub mod symbol_resolver;
 pub mod renamer;
 
-type StatementIndex = usize;
 #[derive(Clone, PartialEq, Eq)]
 pub struct Module {
   pub id: String,
   pub module_side_effects: bool,
   pub statements: Vec<Statement>,
-  pub definitions: HashMap<String, StatementIndex>,
-  pub modifications: HashMap<String, Vec<StatementIndex>>,
   pub exports: HashMap<String, ExportDesc>,
+
   pub is_included: bool,
   pub need_renamed: HashMap<JsWord, JsWord>,
   pub scope: Scope,
+  pub is_entry: bool,
 }
 
 impl std::fmt::Debug for Module {
@@ -47,6 +42,7 @@ impl std::fmt::Debug for Module {
       .field("id", &self.id)
       .field("declared", &self.scope.declared_symbols.keys().map(|s| s.to_string()).collect::<Vec<String>>())
       .field("need_renamed", &self.need_renamed)
+      .field("scope", &self.scope)
       .finish()
   }
 }
@@ -58,17 +54,22 @@ impl Into<DepNode> for Module {
 }
 
 impl Module {
-  pub fn new(id: String) -> Self {
+  pub fn new(id: String, is_entry: bool) -> Self {
+    let mark = Mark::fresh(Mark::root());
+    println!("mark1 {:?}", mark);
+    let mark = Mark::fresh(Mark::root());
+    println!("mark2 {:?}", mark);
     Module {
       id,
       module_side_effects: true,
       statements: Default::default(),
-      definitions: Default::default(),
-      modifications: Default::default(),
+      // definitions: Default::default(),
+      // modifications: Default::default(),
       exports: Default::default(),
       need_renamed: Default::default(),
       is_included: false,
       scope: Scope::new(ScopeKind::Fn, Mark::fresh(Mark::root())),
+      is_entry,
     }
   }
 
@@ -79,40 +80,28 @@ impl Module {
     self.is_included = true;
   }
 
-  pub fn set_source(&mut self, source: String) {
+  pub fn set_source(&mut self, source: String) -> Scanner {
     let mut ast = parse_file(source, &self.id, &SOURCE_MAP).unwrap();
 
     ast.visit_mut_children_with(&mut ClearMark);
+    
+    let mut scanner = Scanner::new(self.scope.clone());
+    
+    ast.visit_mut_children_with(&mut scanner);
 
-    let mut symbol_declator = SymbolResolver {
-      stacks: vec![self.scope.clone()],
-      reuse_scope: false,
-    };
-    ast.visit_mut_children_with(&mut symbol_declator);
-
-    self.scope = symbol_declator.into_cur_scope();
-
+    println!("ast {:#?}", ast);
+    
+    self.scope = scanner.get_cur_scope().clone();
+    
     let statements = ast
       .body
-      .into_iter()
+      .into_par_iter()
       .map(|node| Statement::new(node))
       .collect::<Vec<Statement>>();
 
-    statements.iter().enumerate().for_each(|(idx, s)| {
-      s.defines.iter().for_each(|s| {
-        self.definitions.insert(s.clone(), idx);
-      });
-
-      s.modifies.iter().for_each(|name| {
-        if !self.modifications.contains_key(name) {
-          self.modifications.insert(name.clone(), vec![]);
-        }
-        if let Some(vec) = self.modifications.get_mut(name) {
-          vec.push(idx);
-        }
-      });
-    });
     self.statements = statements;
+
+    scanner
   }
 
   pub fn rename(&mut self) {
@@ -131,7 +120,7 @@ impl Module {
       .iter()
       .filter_map(|s| if s.is_included { Some(s.clone()) } else { None })
       .map(|mut stmt| {
-        fold_export_decl_to_decl(&mut stmt.node);
+        // fold_export_decl_to_decl(&mut stmt.node);
         stmt
       })
       .collect()

@@ -6,5 +6,6 @@ pub mod types;
 pub mod utils;
 pub mod chunk;
 pub mod bundle;
+pub mod scanner;
 
 pub use swc_ecma_ast as ast;

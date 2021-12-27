@@ -1,20 +1,17 @@
-use petgraph::algo::toposort;
 use petgraph::dot::Dot;
-use petgraph::visit::{depth_first_search, Control, DfsEvent, DfsPostOrder, IntoNodeReferences};
+use petgraph::visit::DfsPostOrder;
 use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use swc_common::sync::Lrc;
-use swc_common::{Globals, Mark, SourceMap, GLOBALS};
+use swc_common::{Globals, SourceMap, GLOBALS};
 
 use crate::external_module::ExternalModule;
 use crate::module::Module;
-use crate::statement::analyse::relationship_analyzer::{
-  parse_file, DynImportDesc, ImportDesc, ReExportDesc, RelationshipAnalyzer,
-};
-use crate::statement::Statement;
+use crate::scanner::rel::{DynImportDesc, ImportDesc, ReExportDesc};
+use crate::scanner::Scanner;
 use crate::types::ResolvedId;
 use crate::utils::resolve_id::resolve_id;
 
@@ -52,21 +49,18 @@ impl GraphContainer {
 
     let graph = Graph::default();
 
-    // let globals = Globals::new();
-
     let s = Self {
       entry_path: entry,
       graph,
       entries: Default::default(),
       ordered_modules: Default::default(),
-      // globals,
     };
     s
   }
 
   // build dependency graph via entry modules.
-  pub fn generate_module_graph(&mut self) {
-    let entry_module = Module::new(self.entry_path.clone());
+  fn generate_module_graph(&mut self) {
+    let entry_module = Module::new(self.entry_path.clone(), true);
     let mut module_id_to_node_idx_map = Default::default();
     let mut ctx = AnalyseContext {
       graph: &mut self.graph,
@@ -78,7 +72,6 @@ impl GraphContainer {
 
   pub fn build(&mut self) {
     let globals = Globals::new();
-
     GLOBALS.set(&globals, || {
       self.generate_module_graph();
 
@@ -87,13 +80,10 @@ impl GraphContainer {
       self.include_statements();
     });
 
-    println!(
-      "entry_modules {:?}",
-      Dot::new(&self.graph)
-    )
+    println!("entry_modules {:?}", Dot::new(&self.graph))
   }
 
-  pub fn include_statements(&mut self) {
+  fn include_statements(&mut self) {
     // TODO: tree-shaking
     self.graph.node_indices().into_iter().for_each(|idx| {
       if let DepNode::Mod(m) = &mut self.graph[idx] {
@@ -102,7 +92,7 @@ impl GraphContainer {
     });
   }
 
-  pub fn sort_modules(&mut self) {
+  fn sort_modules(&mut self) {
     let mut dfs = DfsPostOrder::new(&self.graph, self.entries[0]);
     let mut ordered_modules = vec![];
     // FIXME: is this correct?
@@ -120,12 +110,7 @@ fn analyse_module(
   rel: Rel,
 ) -> NodeIndex {
   let source = std::fs::read_to_string(&module.id).unwrap();
-  module.set_source(source.clone());
-  let analyzers = module
-    .statements
-    .iter()
-    .map(|s| s.analyse())
-    .collect::<Vec<RelationshipAnalyzer>>();
+  let scanner = module.set_source(source.clone());
   let module_id = module.id.clone();
 
   let node_idx;
@@ -146,9 +131,7 @@ fn analyse_module(
   }
 
   if !has_seen {
-    analyzers
-      .into_iter()
-      .for_each(|analyzer| analyse_statement(ctx, analyzer, &module_id, node_idx.clone()));
+    analyse_dep(ctx, scanner, &module_id, node_idx);
   }
 
   node_idx
@@ -169,13 +152,13 @@ fn analyse_external_module(
   ctx.graph.add_edge(parent, node_idx, rel);
 }
 
-fn analyse_statement(
+fn analyse_dep(
   ctx: &mut AnalyseContext,
-  relationship_analyzer: RelationshipAnalyzer,
+  scanner: Scanner,
   module_id: &str,
   parent: NodeIndex,
 ) {
-  relationship_analyzer
+  scanner
     .imports
     .into_values()
     .into_iter()
@@ -186,7 +169,7 @@ fn analyse_statement(
       analyse_mod_or_ext(ctx, mod_or_ext, parent, Rel::Import(imp));
     });
 
-  relationship_analyzer
+  scanner
     .dynamic_imports
     .into_iter()
     .for_each(|dyn_imp| {
@@ -196,7 +179,7 @@ fn analyse_statement(
       analyse_mod_or_ext(ctx, mod_or_ext, parent, Rel::DynImport(dyn_imp));
     });
 
-  relationship_analyzer
+  scanner
     .re_exports
     .into_values()
     .into_iter()
@@ -207,7 +190,7 @@ fn analyse_statement(
       analyse_mod_or_ext(ctx, mod_or_ext, parent, Rel::ReExport(re_expr));
     });
 
-  relationship_analyzer
+  scanner
     .export_all_sources
     .into_iter()
     .for_each(|source| {
@@ -237,6 +220,6 @@ fn resove_module_by_resolved_id(resolved: ResolvedId) -> ModOrExt {
   if resolved.external {
     ModOrExt::Ext(ExternalModule::new(resolved.id))
   } else {
-    ModOrExt::Mod(Module::new(resolved.id))
+    ModOrExt::Mod(Module::new(resolved.id, false))
   }
 }

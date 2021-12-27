@@ -1,6 +1,16 @@
-import { a as a2 } from './a1'
-import { a as a3 } from './a2'
+import { a as renamed_a1 } from './a1'
 
 
 export const a = 0;
-console.log(a, a2, a3)
+const b = { foo: a, a, }
+console.log(renamed_a1, a, b.foo)
+
+{
+  const a = 1;
+  {
+    const a = 1;
+    {
+      const a = 1;
+    }
+  }
+}

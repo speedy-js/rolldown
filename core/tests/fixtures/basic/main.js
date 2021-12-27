@@ -10,3 +10,8 @@ import * as fn from './default-export/fn'
 import * as klass from './default-export/klass'
 import * as namedClass from './default-export/named-class'
 import * as namedFn from './default-export/named-fn'
+
+{
+  const a = 1;
+  const b = 2;
+}

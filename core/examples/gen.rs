@@ -1,5 +1,5 @@
 
-use petgraph::dot::Dot;
+
 use rolldown::{bundle::Bundle, graph::GraphContainer};
 
 fn main() {

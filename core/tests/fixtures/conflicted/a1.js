@@ -1,2 +1,3 @@
 export const a = 0;
-console.log(a)
+const b = { foo: a, a }
+console.log(a, b.foo)
