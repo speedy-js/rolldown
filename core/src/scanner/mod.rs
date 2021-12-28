@@ -165,165 +165,6 @@ impl VisitMut for Scanner {
     node.visit_mut_children_with(self);
   }
 
-  // fn visit_mut_export_default_decl(&mut self, node: &mut ExportDefaultDecl) {
-  //   let id = match &mut node.decl {
-  //     DefaultDecl::Class(node) => node.ident.as_mut().map(|s| (s, VarDeclKind::Let)),
-  //     DefaultDecl::Fn(node) => node.ident.as_mut().map(|s| (s, VarDeclKind::Var)),
-  //     _ => None,
-  //   };
-  //   if let Some((id, kind)) = id {
-  //     self.declare(&id.sym, kind);
-  //   }
-  //   node.visit_mut_children_with(self);
-  // }
-
-  // fn visit_mut_fn_expr(&mut self, node: &mut FnExpr) {
-  //   self.push_scope(ScopeKind::Fn);
-
-  //   node.function.params.iter_mut().for_each(|p| {
-  //     self.declare_pat(&mut p.pat, VarDeclKind::Var);
-  //   });
-
-  //   if let Some(ident) = &mut node.ident {
-  //     self.declare(&mut ident.sym, VarDeclKind::Var);
-  //   }
-
-  //   self.reuse_scope = true;
-  //   self.visit_mut_stmt_within_same_scope(&mut node.function.body)
-  //   node.visit_mut_children_with(self);
-  //   self.stacks.pop();
-  // }
-
-  // fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
-  // self.declare(&mut node.ident.sym, VarDeclKind::Var);
-
-  // let scope = Scope::new(
-  //   ScopeKind::Fn,
-  //   Mark::fresh(self.get_cur_scope().mark.clone()),
-  // );
-  // node.visit_mut_children_with(&mut Hositer { scope: &mut Scope });
-  // self.stacks.push(scope);
-
-  // node.function.params.iter_mut().for_each(|p| {
-  //   self.declare_pat(&mut p.pat, VarDeclKind::Var);
-  // });
-
-  // self.reuse_scope = true;
-  // node.visit_mut_children_with(self);
-  // self.stacks.pop();
-  // }
-
-  // fn visit_mut_arrow_expr(&mut self, node: &mut ArrowExpr) {
-  //   let scope = Scope::new(
-  //     ScopeKind::Fn,
-  //     Mark::fresh(self.get_cur_scope().mark.clone()),
-  //   );
-  //   self.stacks.push(scope);
-
-  //   node.params.iter_mut().for_each(|p| {
-  //     self.declare_pat(p, VarDeclKind::Var);
-  //   });
-
-  //   self.reuse_scope = true;
-  //   node.visit_mut_children_with(self);
-  //   self.stacks.pop();
-  // }
-
-  // fn visit_mut_class_method(&mut self, node: &mut ClassMethod) {
-  //   let scope = Scope::new(
-  //     ScopeKind::Fn,
-  //     Mark::fresh(self.get_cur_scope().mark.clone()),
-  //   );
-  //   self.stacks.push(scope);
-
-  //   node.function.params.iter_mut().for_each(|p| {
-  //     self.declare_pat(&mut p.pat, VarDeclKind::Var);
-  //   });
-
-  //   self.reuse_scope = true;
-  //   node.visit_mut_children_with(self);
-  //   self.stacks.pop();
-  // }
-
-  // fn visit_mut_method_prop(&mut self, node: &mut MethodProp) {
-  //   let scope = Scope::new(
-  //     ScopeKind::Fn,
-  //     Mark::fresh(self.get_cur_scope().mark.clone()),
-  //   );
-  //   self.stacks.push(scope);
-
-  //   node.function.params.iter_mut().for_each(|p| {
-  //     self.declare_pat(&mut p.pat, VarDeclKind::Var);
-  //   });
-
-  //   self.reuse_scope = true;
-  //   node.visit_mut_children_with(self);
-  //   self.stacks.pop();
-  // }
-
-  // fn visit_mut_block_stmt(&mut self, node: &mut BlockStmt) {
-  //   self.push_scope(ScopeKind::Block);
-  //   node.visit_mut_children_with(self);
-  //   self.pop_scope();
-  // }
-
-  // fn visit_mut_catch_clause(&mut self, node: &mut CatchClause) {
-  //   let scope = Scope::new(
-  //     ScopeKind::Block,
-  //     Mark::fresh(self.get_cur_scope().mark.clone()),
-  //   );
-  //   self.stacks.push(scope);
-  //   self.reuse_scope = true;
-  //   node.visit_mut_children_with(self);
-  //   self.stacks.pop();
-  // }
-
-  // fn visit_mut_var_decl(&mut self, node: &mut VarDecl) {
-  //   node.decls.iter_mut().for_each(|declarator| {
-  //     self.declare_pat(&mut declarator.name, node.kind.clone());
-  //   });
-  // }
-
-  // fn visit_mut_class_decl(&mut self, node: &mut ClassDecl) {
-  //   self.declare(&mut node.ident.sym, VarDeclKind::Const);
-  //   node.visit_mut_children_with(self);
-  // }
-
-  // // --- for
-
-  // fn visit_mut_for_stmt(&mut self, node: &mut ForStmt) {
-  //   let scope = Scope::new(
-  //     ScopeKind::Block,
-  //     Mark::fresh(self.get_cur_scope().mark.clone()),
-  //   );
-  //   self.stacks.push(scope);
-  //   self.reuse_scope = true;
-  //   node.visit_mut_children_with(self);
-  //   self.stacks.pop();
-  // }
-
-  // fn visit_mut_for_in_stmt(&mut self, node: &mut ForInStmt) {
-  //   let scope = Scope::new(
-  //     ScopeKind::Block,
-  //     Mark::fresh(self.get_cur_scope().mark.clone()),
-  //   );
-  //   self.stacks.push(scope);
-  //   self.reuse_scope = true;
-  //   node.visit_mut_children_with(self);
-  //   self.stacks.pop();
-  // }
-
-  // fn visit_mut_for_of_stmt(&mut self, node: &mut ForOfStmt) {
-  //   let scope = Scope::new(
-  //     ScopeKind::Block,
-  //     Mark::fresh(self.get_cur_scope().mark.clone()),
-  //   );
-  //   self.stacks.push(scope);
-  //   self.reuse_scope = true;
-  //   node.visit_mut_children_with(self);
-  //   self.stacks.pop();
-  // }
-
   fn visit_mut_import_decl(&mut self, n: &mut ImportDecl) {
     self.ident_type = IdentType::Binding(VarDeclKind::Const);
     n.visit_mut_children_with(self);
@@ -369,13 +210,6 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_catch_clause(&mut self, c: &mut CatchClause) {
-    // let child_mark = Mark::fresh(Mark::root());
-
-    // // Child folder
-    // let mut folder = Resolver::new(
-    //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-    //     self.handle_types,
-    // );
 
     self.push_scope(ScopeKind::Block);
 
@@ -390,13 +224,6 @@ impl VisitMut for Scanner {
   fn visit_mut_class_decl(&mut self, n: &mut ClassDecl) {
     self.declare(&mut n.ident, VarDeclKind::Let);
 
-    // // Create a child scope. The class name is only accessible within the class.
-    // let child_mark = Mark::fresh(Mark::root());
-
-    // let mut folder = Resolver::new(
-    //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-    //     self.handle_types,
-    // );
     self.push_scope(ScopeKind::Fn);
 
     self.ident_type = IdentType::Ref;
@@ -407,13 +234,6 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_class_expr(&mut self, n: &mut ClassExpr) {
-    // Create a child scope. The class name is only accessible within the class.
-    // let child_mark = Mark::fresh(Mark::root());
-
-    // let mut folder = Resolver::new(
-    //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-    //     self.handle_types,
-    // );
     self.push_scope(ScopeKind::Fn);
 
     self.ident_type = IdentType::Binding(VarDeclKind::Var);
@@ -428,21 +248,12 @@ impl VisitMut for Scanner {
   fn visit_mut_class_method(&mut self, m: &mut ClassMethod) {
     m.key.visit_mut_with(self);
 
-    {
-      // let child_mark = Mark::fresh(Mark::root());
 
-      // // Child folder
-      // let mut child = Resolver::new(
-      //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-      //     self.handle_types,
-      // );
+    self.push_scope(ScopeKind::Fn);
 
-      self.push_scope(ScopeKind::Fn);
+    m.function.visit_mut_with(self);
 
-      m.function.visit_mut_with(self);
-
-      self.pop_scope();
-    }
+    self.pop_scope();
   }
 
   fn visit_mut_class_prop(&mut self, p: &mut ClassProp) {
@@ -464,14 +275,6 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_constructor(&mut self, c: &mut Constructor) {
-    let child_mark = Mark::fresh(Mark::root());
-
-    // // Child folder
-    // let mut folder = Resolver::new(
-    //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-    //     self.handle_types,
-    // );
-
     self.push_scope(ScopeKind::Fn);
 
     let old = self.ident_type;
@@ -499,13 +302,6 @@ impl VisitMut for Scanner {
     match &mut e.decl {
       DefaultDecl::Fn(f) => {
         if f.ident.is_some() {
-          // let child_mark = Mark::fresh(Mark::root());
-
-          // // Child folder
-          // let mut folder = Resolver::new(
-          //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-          //     self.handle_types,
-          // );
           self.push_scope(ScopeKind::Fn);
           f.function.visit_mut_with(self);
           self.pop_scope();
@@ -522,7 +318,6 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_expr(&mut self, expr: &mut Expr) {
-    // self.in_type = false;
     let old = self.ident_type;
     self.ident_type = IdentType::Ref;
     expr.visit_mut_children_with(self);
@@ -530,33 +325,14 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
-    // We don't fold this as Hoister handles this.
-
-    {
-      // let child_mark = Mark::fresh(Mark::root());
-
-      // // Child folder
-      // let mut folder = Resolver::new(
-      //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-      //     self.handle_types,
-      // );
-
       self.push_scope(ScopeKind::Fn);
 
       node.function.visit_mut_with(self);
 
       self.pop_scope();
-    }
   }
 
   fn visit_mut_fn_expr(&mut self, e: &mut FnExpr) {
-    // let child_mark = Mark::fresh(Mark::root());
-
-    // // Child folder
-    // let mut folder = Resolver::new(
-    //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-    //     self.handle_types,
-    // );
 
     self.push_scope(ScopeKind::Fn);
 
@@ -569,11 +345,6 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_for_in_stmt(&mut self, n: &mut ForInStmt) {
-    // let child_mark = Mark::fresh(Mark::root());
-    // let mut child = Resolver::new(
-    //     Scope::new(ScopeKind::Block, child_mark, Some(&self.current)),
-    //     self.handle_types,
-    // );
     self.push_scope(ScopeKind::Block);
 
     n.left.visit_mut_with(self);
@@ -585,11 +356,6 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_for_of_stmt(&mut self, n: &mut ForOfStmt) {
-    // let child_mark = Mark::fresh(Mark::root());
-    // let mut child = Resolver::new(
-    //     Scope::new(ScopeKind::Block, child_mark, Some(&self.current)),
-    //     self.handle_types,
-    // );
 
     self.push_scope(ScopeKind::Block);
 
@@ -601,10 +367,8 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_for_stmt(&mut self, n: &mut ForStmt) {
-    let child_mark = Mark::fresh(Mark::root());
     self.push_scope(ScopeKind::Block);
 
-    // self.ident_type = IdentType::Binding;
     n.init.visit_mut_with(self);
     self.ident_type = IdentType::Ref;
     n.test.visit_mut_with(self);
@@ -617,16 +381,12 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_function(&mut self, f: &mut Function) {
-    // f.type_params.visit_mut_with(self);
-
-    // self.in_type = false;
     self.ident_type = IdentType::Ref;
     f.decorators.visit_mut_with(self);
 
     self.ident_type = IdentType::Binding(VarDeclKind::Var);
     f.params.visit_mut_with(self);
 
-    // f.return_type.visit_mut_with(self);
 
     self.ident_type = IdentType::Ref;
     match &mut f.body {
@@ -643,61 +403,6 @@ impl VisitMut for Scanner {
       IdentType::Binding(kind) => self.declare(i, kind),
       IdentType::Ref => {
         self.resolve_ctxt_for_ident(i);
-        // let Ident { span, sym, .. } = i;
-
-        // // if cfg!(debug_assertions) && LOG {
-        // //     eprintln!(
-        // //         "resolver: IdentRef (type = {}) {}{:?}",
-        // //         self.in_type,
-        // //         sym,
-        // //         span.ctxt()
-        // //     );
-        // // }
-
-        // if span.ctxt() != SyntaxContext::empty() {
-        //     return;
-        // }
-
-        // if let Some(mark) = self.mark_for_ref(&sym) {
-        //     let span = span.apply_mark(mark);
-
-        //     if cfg!(debug_assertions) && LOG {
-        //         eprintln!("\t -> {:?}", span.ctxt());
-        //     }
-        //     i.span = span;
-        // } else {
-        //     if cfg!(debug_assertions) && LOG {
-        //         eprintln!("\t -> Unresolved");
-        //     }
-
-        //     let mark = {
-        //         let mut mark = self.current.mark;
-        //         let mut cur = Some(&self.current);
-        //         while let Some(scope) = cur {
-        //             cur = scope.parent;
-
-        //             if cur.is_none() {
-        //                 break;
-        //             }
-
-        //             if let Some(cur) = &cur {
-        //                 mark = cur.mark;
-        //             }
-        //         }
-
-        //         mark
-        //     };
-
-        //     let span = span.apply_mark(mark);
-
-        //     if cfg!(debug_assertions) && LOG {
-        //         eprintln!("\t -> {:?}", span.ctxt());
-        //     }
-
-        //     i.span = span;
-        //     // Support hoisting
-        //     self.modify(i, None)
-        // }
       }
       // We currently does not touch labels
       IdentType::Label => {}
@@ -737,33 +442,10 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_module_items(&mut self, stmts: &mut Vec<ModuleItem>) {
-    // if !self.in_ts_module && self.current.kind != ScopeKind::Fn {
-    //     return stmts.visit_mut_children_with(self);
-    // }
     stmts.visit_mut_children_with(self);
-
-    // // Phase 1: Handle hoisting
-    // {
-    //     let mut hoister = Hoister {
-    //         resolver: self,
-    //         kind: None,
-    //         in_block: false,
-    //         catch_param_decls: Default::default(),
-    //     };
-    //     stmts.visit_mut_children_with(&mut hoister)
-    // }
-
-    // // Phase 2.
-    // stmts.visit_mut_children_with(self)
   }
 
   fn visit_mut_object_lit(&mut self, o: &mut ObjectLit) {
-    // let child_mark = Mark::fresh(Mark::root());
-
-    // let mut child_folder = Resolver::new(
-    //     Scope::new(ScopeKind::Block, child_mark, Some(&self.current)),
-    //     self.handle_types,
-    // );
     self.push_scope(ScopeKind::Block);
 
     o.visit_mut_children_with(self);
@@ -783,19 +465,9 @@ impl VisitMut for Scanner {
   fn visit_mut_private_method(&mut self, m: &mut PrivateMethod) {
     m.key.visit_mut_with(self);
 
-    {
-      // let child_mark = Mark::fresh(Mark::root());
-
-      // // Child folder
-      // let mut child = Resolver::new(
-      //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-      //     self.handle_types,
-      // );
-      self.push_scope(ScopeKind::Fn);
-
-      m.function.visit_mut_with(self);
-      self.pop_scope();
-    }
+    self.push_scope(ScopeKind::Fn);
+    m.function.visit_mut_with(self);
+    self.pop_scope();
   }
 
   // fn visit_mut_private_name(&mut self, _: &mut PrivateName) {}
@@ -803,56 +475,27 @@ impl VisitMut for Scanner {
   fn visit_mut_setter_prop(&mut self, n: &mut SetterProp) {
     n.key.visit_mut_with(self);
 
-    {
-      // let child_mark = Mark::fresh(Mark::root());
-
-      // // Child folder
-      // let mut child = Resolver::new(
-      //     Scope::new(ScopeKind::Fn, child_mark, Some(&self.current)),
-      //     self.handle_types,
-      // );
-      self.push_scope(ScopeKind::Fn);
-
-      // self.in_type = false;
-      self.ident_type = IdentType::Binding(VarDeclKind::Var);
-      n.param.visit_mut_with(self);
-      n.body.visit_mut_with(self);
-      self.pop_scope();
-    };
+    self.push_scope(ScopeKind::Fn);
+    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    n.param.visit_mut_with(self);
+    n.body.visit_mut_with(self);
+    self.pop_scope();
   }
 
   fn visit_mut_stmts(&mut self, stmts: &mut Vec<Stmt>) {
-    // // Phase 1: Handle hoisting
-    // {
-    //     let mut hoister = Hoister {
-    //         resolver: self,
-    //         kind: None,
-    //         in_block: false,
-    //         catch_param_decls: Default::default(),
-    //     };
-    //     stmts.visit_mut_children_with(&mut hoister)
-    // }
-
-    // Phase 2.
     stmts.visit_mut_children_with(self)
   }
 
   fn visit_mut_var_decl(&mut self, decl: &mut VarDecl) {
-    // self.in_type = false;
 
-    // let old_hoist = self.hoist;
-
-    // self.hoist = VarDeclKind::Var == decl.kind;
     let ident_type = self.ident_type;
     self.ident_type = IdentType::Binding(decl.kind.clone());
     decl.decls.visit_mut_with(self);
     self.ident_type = ident_type;
 
-    // self.hoist = old_hoist;
   }
 
   fn visit_mut_var_declarator(&mut self, decl: &mut VarDeclarator) {
-    // order is important
 
     decl.name.visit_mut_with(self);
 
@@ -862,22 +505,6 @@ impl VisitMut for Scanner {
     self.ident_type = old_type;
   }
 }
-
-// fn collect_ident_of_pat(pat: &Pat) -> Vec<&Ident> {
-//   match pat {
-//     // export const a = 1;
-//     Pat::Ident(pat) => vec![&pat.id],
-//     // export const [a] = [1]
-//     Pat::Array(pat) => pat
-//       .elems
-//       .iter()
-//       .flat_map(|pat| pat.as_ref().map_or(vec![], collect_ident_of_pat))
-//       .collect(),
-//     // TODO: export const { a } = { a: 1 }
-//     // Pat::Object()
-//     _ => vec![],
-//   }
-// }
 
 pub struct Hoister<'me> {
   scope: &'me mut Scope,
