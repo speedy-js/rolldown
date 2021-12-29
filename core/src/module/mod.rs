@@ -10,7 +10,7 @@ use crate::{
 };
 use rayon::prelude::*;
 use swc_atoms::JsWord;
-use swc_ecma_ast::Ident;
+use swc_ecma_ast::{Ident, ModuleItem};
 use swc_ecma_visit::{VisitMut, VisitMutWith};
 use std::{
   collections::{HashMap},
@@ -82,6 +82,19 @@ impl Module {
 
   pub fn set_source(&mut self, source: String) -> Scanner {
     let mut ast = parse_file(source, &self.id, &SOURCE_MAP).unwrap();
+
+    ast.body.sort_by(|a, b| {
+      use std::cmp::Ordering;
+      let is_a_module_decl = matches!(a, ModuleItem::ModuleDecl(_));
+      let is_b_module_decl = matches!(b, ModuleItem::ModuleDecl(_));
+      if is_a_module_decl && !is_b_module_decl {
+        Ordering::Less
+      } else if is_b_module_decl && !is_a_module_decl {
+        Ordering::Greater
+      } else {
+        Ordering::Equal
+      }
+    });
 
     ast.visit_mut_children_with(&mut ClearMark);
     
