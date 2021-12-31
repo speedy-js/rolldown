@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use swc_atoms::JsWord;
 use swc_common::SyntaxContext;
-use swc_ecma_ast::{Expr, Ident, KeyValueProp, ObjectLit, Prop, PropName, PropOrSpread};
+use swc_ecma_ast::{Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop, PropName, PropOrSpread};
 use swc_ecma_visit::{VisitMut, VisitMutWith};
 
 pub struct Renamer<'me> {
@@ -11,6 +11,26 @@ pub struct Renamer<'me> {
 }
 
 impl<'me> VisitMut for Renamer<'me> {
+  fn visit_mut_import_decl(&mut self, node: &mut ImportDecl) {
+    // We won't remove import statement which import external module. So we need to consider following situation
+    // ```a.js
+    // import { useState } from 'react'
+    // console.log(useState)
+    // ```
+    // ```b.js
+    // const useState = () => {}
+    // useState()
+    // ```
+    // ```a+b.js
+    // import { useState as useState$1 } from 'react'
+    // console.log(useState$1)
+    // const useState = () => {}
+    // useState()
+    // ```
+    // TODO:
+  }
+
+
   fn visit_mut_ident(&mut self, node: &mut Ident) {
     if let Some(ctxt) = self.ctxt_mapping.get(&node.sym) {
       if &node.span.ctxt == ctxt {
