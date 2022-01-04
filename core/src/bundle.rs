@@ -13,9 +13,12 @@ impl Bundle {
   }
 
   pub fn generate(&mut self) -> String {
-    let chunk = Chunk {
+    let mut chunk = Chunk {
       order_modules: self.graph_container.ordered_modules.clone(),
+      ..Default::default()
     };
+
+    chunk.symbol_uf_set = self.graph_container.symbol_uf.clone();
 
     chunk.render(&mut self.graph_container.graph)
   }

@@ -1,13 +1,18 @@
 use std::collections::HashMap;
 
+use ena::unify::InPlaceUnificationTable;
 use swc_atoms::JsWord;
 use swc_common::SyntaxContext;
 use swc_ecma_ast::{Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop, PropName, PropOrSpread};
 use swc_ecma_visit::{VisitMut, VisitMutWith};
 
+use crate::chunk::Ctxt;
+
 pub struct Renamer<'me> {
   pub ctxt_mapping: &'me HashMap<JsWord, SyntaxContext>,
   pub mapping: &'me HashMap<JsWord, JsWord>,
+  pub symbol_uf: &'me mut InPlaceUnificationTable<Ctxt>,
+  pub ctxt_to_name: &'me HashMap<SyntaxContext, JsWord>
 }
 
 impl<'me> VisitMut for Renamer<'me> {
@@ -32,12 +37,10 @@ impl<'me> VisitMut for Renamer<'me> {
 
 
   fn visit_mut_ident(&mut self, node: &mut Ident) {
-    if let Some(ctxt) = self.ctxt_mapping.get(&node.sym) {
-      if &node.span.ctxt == ctxt {
-        if let Some(replacement) = self.mapping.get(&node.sym).map(|s| s.clone()) {
-          node.sym = replacement
-        }
-      }
+    let ctxt: Ctxt = node.span.ctxt.clone().into();
+    let root = self.symbol_uf.find(ctxt);
+    if let Some(replacement) = self.ctxt_to_name.get(&root.0) {
+      node.sym = replacement.clone()
     }
   }
 

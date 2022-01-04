@@ -1,5 +1,7 @@
+use ena::unify::UnificationTable;
 use swc_atoms::JsWord;
 
+use swc_common::SyntaxContext;
 use swc_ecma_ast::{
   CallExpr, Decl, DefaultDecl, ExportSpecifier, Expr, ExprOrSuper, Lit, ModuleDecl,
 };

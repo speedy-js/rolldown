@@ -1,5 +1,7 @@
+use ena::unify::InPlaceUnificationTable;
+use log::debug;
 use petgraph::dot::Dot;
-use petgraph::visit::DfsPostOrder;
+use petgraph::visit::{DfsPostOrder, EdgeRef, IntoEdgesDirected};
 use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
@@ -8,6 +10,7 @@ use petgraph::Graph;
 use swc_common::sync::Lrc;
 use swc_common::{Globals, SourceMap, GLOBALS};
 
+use crate::chunk::Ctxt;
 use crate::external_module::ExternalModule;
 use crate::module::Module;
 use crate::scanner::rel::{DynImportDesc, ImportDesc, ReExportDesc};
@@ -40,6 +43,7 @@ pub struct GraphContainer {
   pub graph: DepGraph,
   pub entries: Vec<NodeIndex>,
   pub ordered_modules: Vec<NodeIndex>,
+  pub symbol_uf: InPlaceUnificationTable<Ctxt>,
   // pub globals: Globals,
 }
 
@@ -54,6 +58,7 @@ impl GraphContainer {
       graph,
       entries: Default::default(),
       ordered_modules: Default::default(),
+      symbol_uf: Default::default(),
     };
     s
   }
@@ -93,13 +98,83 @@ impl GraphContainer {
   }
 
   fn sort_modules(&mut self) {
+    debug!("sort_modules");
     let mut dfs = DfsPostOrder::new(&self.graph, self.entries[0]);
     let mut ordered_modules = vec![];
     // FIXME: is this correct?
     while let Some(node) = dfs.next(&self.graph) {
+      debug!("sort_modules dfs");
+      
       ordered_modules.push(node);
     }
+    debug!("sort_modules dfs end");
     self.ordered_modules = ordered_modules;
+
+    self.ordered_modules.iter().for_each(|idx| {
+      debug!("sort_modules 0");
+      let dep = &self.graph[*idx];
+      if let DepNode::Mod(module) = dep {
+        debug!("sort_modules 1.1");
+        module.scope.declared_symbols.values().for_each(|c| {
+          debug!("sort_modules 1");
+          let ctxt: Ctxt = c.clone().into();
+          self.symbol_uf.unify_var_value(ctxt, ()).unwrap();
+          debug!("sort_modules 2");
+        });
+      }
+    });
+    self.ordered_modules.iter().for_each(|idx| {
+      let dep = &self.graph[*idx];
+      if let DepNode::Mod(module) = dep {
+        let rels = self
+          .graph
+          .edges_directed(*idx, petgraph::Direction::Outgoing);
+        rels.for_each(|rel| match rel.weight() {
+          Rel::Import(desc) => {
+            let imported = &self.graph[rel.target()];
+            if let DepNode::Mod(imported_module) = imported {
+              let ctxt: Ctxt = module
+                .scope
+                .declared_symbols
+                .get(&desc.name)
+                .unwrap()
+                .clone()
+                .into();
+              let local_ctxt: Ctxt = imported_module
+                .scope
+                .declared_symbols
+                .get(&desc.local_name)
+                .unwrap()
+                .clone()
+                .into();
+              self.symbol_uf.union(ctxt, local_ctxt);
+            }
+          }
+          Rel::ReExport(desc) => {
+            let re_exported = &self.graph[rel.target()];
+            if let DepNode::Mod(imported_module) = re_exported {
+              let ctxt: Ctxt = module
+                .scope
+                .declared_symbols
+                .get(&desc.name)
+                .unwrap()
+                .clone()
+                .into();
+              let local_ctxt: Ctxt = imported_module
+                .scope
+                .declared_symbols
+                .get(&desc.local_name)
+                .unwrap()
+                .clone()
+                .into();
+              self.symbol_uf.union(ctxt, local_ctxt);
+            }
+          }
+          _ => {}
+        });
+      }
+    });
+    debug!("sort_modules end");
   }
 }
 
