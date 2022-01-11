@@ -41,7 +41,7 @@ pub enum Rel {
 
 pub type DepGraph = Graph<DepNode, Rel>;
 
-#[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
+#[derive(PartialEq, Debug, Clone, Copy, Eq, Hash, Default)]
 pub struct Ctxt(pub SyntaxContext, u32);
 
 impl From<SyntaxContext> for Ctxt {
@@ -112,6 +112,7 @@ pub struct GraphContainer {
   pub entries: Vec<NodeIndex>,
   pub ordered_modules: Vec<NodeIndex>,
   // pub asserted_globals: HashMap<JsWord, bool>,
+  pub canonical_names: DashMap<SyntaxContext, JsWord>,
   pub symbol_rel: UnionFind<Ctxt>,
   // pub globals: Globals,
 }
@@ -129,6 +130,7 @@ impl GraphContainer {
       ordered_modules: Default::default(),
       // asserted_globals: Default::default(),
       symbol_rel: Default::default(),
+      canonical_names: Default::default(),
     };
     s
   }
@@ -153,6 +155,8 @@ impl GraphContainer {
       self.sort_modules();
 
       self.link_modules();
+
+      println!("{:?}", self.symbol_rel);
 
       self.include_statements();
     });
@@ -235,12 +239,26 @@ impl GraphContainer {
     symbol_rel: &mut UnionFind<Ctxt>,
     graph: &DepGraph,
   ) {
-    let current_ctxt: Ctxt = curr_module
+    let target_ctxt: Ctxt = curr_module
       .definitions
       .get(&import_desc.local_name)
       .unwrap()
       .clone()
       .into();
+
+    let local_ctxt: Ctxt = curr_module
+      .definitions
+      .get(&import_desc.name)
+      .unwrap()
+      .clone()
+      .into();
+
+    println!(
+      "local ctxt: {:?} target ctxt: {:?}",
+      local_ctxt, target_ctxt
+    );
+
+    symbol_rel.union(local_ctxt, target_ctxt);
 
     if let Some(export_desc) = target_module
       .scanner
@@ -252,7 +270,7 @@ impl GraphContainer {
       match export_desc.identifier.as_ref() {
         Some(ident) => {
           let decl_ctxt: Ctxt = target_module.definitions.get(ident).unwrap().clone().into();
-          symbol_rel.union(current_ctxt, decl_ctxt);
+          symbol_rel.union(target_ctxt, decl_ctxt);
         }
         _ => (),
       }
@@ -260,7 +278,7 @@ impl GraphContainer {
       match target_module.definitions.get(&export_desc.local_name) {
         Some(ctxt) => {
           let ctxt: Ctxt = ctxt.clone().into();
-          symbol_rel.union(current_ctxt, ctxt);
+          symbol_rel.union(target_ctxt, ctxt);
         }
         None => (),
       }

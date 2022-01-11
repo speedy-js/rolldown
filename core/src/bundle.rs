@@ -15,6 +15,7 @@ impl Bundle {
   pub fn generate(&mut self) -> String {
     let chunk = Chunk {
       order_modules: self.graph_container.ordered_modules.clone(),
+      symbol_rel: &self.graph_container.symbol_rel,
     };
 
     chunk.render(&mut self.graph_container.graph)

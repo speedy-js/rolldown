@@ -14,6 +14,8 @@ use swc_ecma_ast::{Ident, ModuleItem};
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
 use self::renamer::Renamer;
+use crate::graph::Ctxt;
+use crate::utils::union_find::UnionFind;
 
 pub mod renamer;
 
@@ -134,12 +136,25 @@ impl Module {
     scanner
   }
 
-  pub fn rename(&mut self) {
-    self.statements.par_iter_mut().for_each(|stmt| {
+  pub fn rename(&mut self, symbol_rel: &UnionFind<Ctxt>) {
+    // FIXME: use par_iter later
+    self.statements.iter_mut().for_each(|stmt| {
+      let mut ctxt_jsword_mapping: HashMap<SyntaxContext, JsWord> = Default::default();
+
+      self.scope.declared_symbols.keys().for_each(|key| {
+        if let Some(&ctxt) = self.scope.declared_symbols.get(&key) {
+          ctxt_jsword_mapping.insert(ctxt, key.clone());
+        }
+      });
+
       let mut renamer = Renamer {
         ctxt_mapping: &self.scope.declared_symbols,
         mapping: &self.need_renamed,
+        ctxt_jsword_mapping,
+        symbol_rel,
       };
+
+      println!("{:#?}", renamer);
       stmt.node.visit_mut_with(&mut renamer);
     });
   }

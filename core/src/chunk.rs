@@ -12,21 +12,20 @@ use swc_atoms::JsWord;
 use swc_ecma_ast::EsVersion;
 use swc_ecma_codegen::text_writer::JsWriter;
 
-pub struct Chunk {
+use crate::graph::Ctxt;
+use crate::utils::union_find::UnionFind;
+
+pub struct Chunk<'a> {
   pub order_modules: Vec<NodeIndex>,
+  pub symbol_rel: &'a UnionFind<Ctxt>,
 }
 
-impl Default for Chunk {
-  fn default() -> Self {
+impl<'a> Chunk<'a> {
+  pub fn new(order_modules: Vec<NodeIndex>, symbol_rel: &'a UnionFind<Ctxt>) -> Self {
     Self {
-      order_modules: Default::default(),
+      order_modules,
+      symbol_rel,
     }
-  }
-}
-
-impl Chunk {
-  pub fn new(order_modules: Vec<NodeIndex>) -> Self {
-    Self { order_modules }
   }
 
   pub fn deconflict(&self, graph: &mut DepGraph) {
@@ -35,6 +34,7 @@ impl Chunk {
 
     self.order_modules.iter().for_each(|idx| {
       if let DepNode::Mod(module) = &graph[*idx] {
+        println!("module name: {} scope {:?}", module.id, module.scope);
         module.scope.declared_symbols.keys().for_each(|name| {
           if definers.contains_key(name) {
             conflicted_names.insert(name.clone());
@@ -70,12 +70,12 @@ impl Chunk {
     definers.into_iter().for_each(|(_name, idxs)| {
       idxs.into_iter().for_each(|idx| {
         if let DepNode::Mod(module) = &mut graph[idx] {
-          module.rename();
+          module.rename(self.symbol_rel);
         }
       });
     });
 
-    debug!("conlicted_names {:#?}", conflicted_names);
+    println!("conlicted_names {:#?}", conflicted_names);
   }
 
   pub fn render(&self, graph: &mut DepGraph) -> String {

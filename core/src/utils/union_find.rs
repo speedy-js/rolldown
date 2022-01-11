@@ -1,12 +1,13 @@
 use dashmap::DashMap;
+
 use std::collections::HashMap;
 use std::hash::Hash;
 
 #[derive(Debug, Clone)]
 pub struct UnionFind<T: UnifyValue> {
-  pub union_map: DashMap<u32, u32>,
-  pub key_to_value: DashMap<u32, T::Value>,
-  pub value_to_key: DashMap<T::Value, u32>,
+  union_map: DashMap<u32, u32>,
+  key_to_value: DashMap<u32, T::Value>,
+  value_to_key: DashMap<T::Value, u32>,
 }
 
 impl<T: UnifyValue> Default for UnionFind<T> {
@@ -37,21 +38,32 @@ impl<T: UnifyValue> UnionFind<T> {
 
     self.value_to_key.entry(a.clone()).or_insert(a_index);
     self.value_to_key.entry(b.clone()).or_insert(b_index);
-    self.key_to_value.entry(a_index).or_insert(a.clone());
-    self.key_to_value.entry(b_index).or_insert(b.clone());
+    self
+      .key_to_value
+      .entry(a_index)
+      .or_insert_with(|| a.clone());
+    self
+      .key_to_value
+      .entry(b_index)
+      .or_insert_with(|| b.clone());
 
-    self.union_map.entry(a_index).or_insert(b_index);
+    self
+      .union_map
+      .entry(self.find(a).unwrap_or(a_index))
+      .or_insert_with(|| self.find(b).unwrap_or(b_index));
   }
 
   pub fn find(&self, item: T::Value) -> Option<u32> {
     if let Some(item) = self.value_to_key.get(&item) {
-      let outer_index = *item;
-      let node = T::from_index(outer_index);
-      let internal_index = *self.value_to_key.get(&node).unwrap();
-      let parent_node = self.key_to_value.get(&internal_index).unwrap();
-      self.find(parent_node.clone())
+      match self.union_map.get(&item) {
+        Some(internal_index) => {
+          let parent_node = self.key_to_value.get(&internal_index).unwrap();
+          self.find(parent_node.clone())
+        }
+        None => Some(T::index(item.key())),
+      }
     } else {
-      Some(T::index(&item))
+      None
     }
   }
 }
@@ -61,25 +73,59 @@ fn should_work() {
   use dashmap::DashMap;
   use once_cell::sync::Lazy;
 
-  struct Value(u32);
+  static CTXT_TO_IDX_MAP: Lazy<DashMap<Value, u32>> = Lazy::new(|| Default::default());
+  static IDX_TO_CTXT_MAP: Lazy<DashMap<u32, Value>> = Lazy::new(|| Default::default());
 
-  static ctxt_to_idx: Lazy<DashMap<Value, u32>> = Lazy::new(|| Default::default());
-  static idx_to_ctxt_map: Lazy<DashMap<u32, Value>> = Lazy::new(|| Default::default());
+  #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+  struct Value(u32);
 
   impl Value {
     fn new() -> Self {
-      let curr_len = ctxt_to_idx.len();
-      ctxt_to_idx.entry(curr_len);
+      let curr_len = CTXT_TO_IDX_MAP.len();
+      let value = Self(curr_len as u32);
+
+      CTXT_TO_IDX_MAP
+        .entry(value.clone())
+        .or_insert(curr_len as u32);
+
+      value
     }
   }
 
   impl UnifyValue for Value {
     type Value = Value;
 
-    fn index(value: &Self::Value) -> u32 {}
+    fn index(value: &Self::Value) -> u32 {
+      value.0
+    }
 
     fn from_index(index: u32) -> Self::Value {
-      todo!()
+      IDX_TO_CTXT_MAP.get(&index).unwrap().clone()
     }
   }
+
+  let value1 = Value::new();
+  let value2 = Value::new();
+
+  println!("{:?}{:?}", value1, value2);
+  let mut union_rel: UnionFind<Value> = Default::default();
+
+  union_rel.union(value1, value2);
+  println!("{:?}", union_rel);
+
+  let value2_res = union_rel.find(value2);
+  assert_eq!(value2_res, Some(1));
+  let value1_res = union_rel.find(value1);
+  assert_eq!(value1_res, value2_res);
+
+  let value3 = Value::new();
+  union_rel.union(value1, value3);
+
+  let value4 = Value::new();
+  union_rel.union(value4, value1);
+
+  assert_eq!(union_rel.find(value1), union_rel.find(value3));
+  assert_eq!(union_rel.find(value2), union_rel.find(value4));
+  assert_eq!(union_rel.find(value3), union_rel.find(value4));
+  assert_eq!(union_rel.find(value1), union_rel.find(value4));
 }
