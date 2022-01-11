@@ -3,6 +3,7 @@ pub mod ast;
 // pub mod execution_order;
 pub mod plugin_driver;
 pub mod resolve_id;
+pub mod union_find;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 

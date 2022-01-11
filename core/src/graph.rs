@@ -4,9 +4,6 @@ use std::borrow::BorrowMut;
 use std::collections::HashMap;
 
 use dashmap::DashMap;
-use ena::unify::{
-  InPlace, InPlaceUnificationTable, UnificationStoreBase, UnificationTable, UnifyKey,
-};
 use once_cell::sync::Lazy;
 use petgraph::graph::{EdgeReference, NodeIndex};
 use petgraph::Graph;
@@ -20,7 +17,10 @@ use crate::module::Module;
 use crate::scanner::rel::{DynImportDesc, ImportDesc, ReExportDesc};
 use crate::scanner::Scanner;
 use crate::types::ResolvedId;
-use crate::utils::resolve_id::resolve_id;
+use crate::utils::{
+  resolve_id::resolve_id,
+  union_find::{UnifyValue, UnionFind},
+};
 
 pub(crate) static SOURCE_MAP: Lazy<Lrc<SourceMap>> = Lazy::new(Default::default);
 
@@ -41,7 +41,7 @@ pub enum Rel {
 
 pub type DepGraph = Graph<DepNode, Rel>;
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 pub struct Ctxt(pub SyntaxContext, u32);
 
 impl From<SyntaxContext> for Ctxt {
@@ -65,6 +65,7 @@ impl Ctxt {
     println!("Ctxt");
     let default_id = ctxt_to_idx.len() as u32;
     let next_id = ctxt_to_idx.entry(ctxt.clone()).or_insert(default_id);
+    println!("next id: {}", *next_id);
     println!("Ctxt2");
     idx_to_ctxt_map
       .entry(*next_id)
@@ -77,18 +78,32 @@ impl Ctxt {
   }
 }
 
-impl UnifyKey for Ctxt {
-  type Value = ();
-  fn index(&self) -> u32 {
-    self.1
+impl UnifyValue for Ctxt {
+  type Value = Ctxt;
+
+  fn index(value: &Self::Value) -> u32 {
+    value.1
   }
-  fn from_index(u: u32) -> Self {
-    idx_to_ctxt_map.get(&u).unwrap().clone()
-  }
-  fn tag() -> &'static str {
-    "tag"
+
+  fn from_index(index: u32) -> Self::Value {
+    idx_to_ctxt_map.get(&index).unwrap().clone()
   }
 }
+
+//
+// impl UnifyKey for Ctxt {
+//   type Value = Ctxt;
+//   fn index(&self) -> u32 {
+//     self.1
+//   }
+//   fn from_index(u: u32) -> Self {
+//     println!("from index: {}", u);
+//     idx_to_ctxt_map.get(&u).unwrap().clone()
+//   }
+//   fn tag() -> &'static str {
+//     "tag"
+//   }
+// }
 
 #[non_exhaustive]
 pub struct GraphContainer {
@@ -97,7 +112,7 @@ pub struct GraphContainer {
   pub entries: Vec<NodeIndex>,
   pub ordered_modules: Vec<NodeIndex>,
   // pub asserted_globals: HashMap<JsWord, bool>,
-  pub symbol_rel: InPlaceUnificationTable<Ctxt>,
+  pub symbol_rel: UnionFind<Ctxt>,
   // pub globals: Globals,
 }
 
@@ -217,7 +232,7 @@ impl GraphContainer {
     curr_module: &Module,
     target_module: &Module,
     import_desc: &ImportDesc,
-    symbol_rel: &mut InPlaceUnificationTable<Ctxt>,
+    symbol_rel: &mut UnionFind<Ctxt>,
     graph: &DepGraph,
   ) {
     let current_ctxt: Ctxt = curr_module
