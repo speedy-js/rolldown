@@ -8,23 +8,52 @@ use swc_ecma_visit::{VisitMut, VisitMutWith};
 use crate::graph::Ctxt;
 use crate::utils::union_find::{UnifyValue, UnionFind};
 
-#[derive(Debug)]
 pub struct Renamer<'me> {
   pub ctxt_mapping: &'me HashMap<JsWord, SyntaxContext>,
   pub ctxt_jsword_mapping: HashMap<SyntaxContext, JsWord>,
   pub mapping: &'me HashMap<JsWord, JsWord>,
   pub symbol_rel: &'me UnionFind<Ctxt>,
+  pub canonical_names: &'me HashMap<SyntaxContext, JsWord>,
 }
 
-// impl<'me> std::fmt::Debug for Renamer<'me> {
-//   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//     f.debug_struct("Renamer")
-//       .field("ctxt_mapping", &self.ctxt_mapping)
-//       .field("ctxt_jsword_mapping", &self.ctxt_jsword_mapping)
-//       .field("mapping", &self.mapping)
-//       .finish()
-//   }
-// }
+impl std::fmt::Debug for Renamer<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Renamer")
+      .field(
+        "ctxt_mapping",
+        &self
+          .ctxt_mapping
+          .iter()
+          .map(|k| format!("{}: {:?}", k.0.as_ref(), k.1))
+          .collect::<Vec<_>>(),
+      )
+      .field(
+        "ctxt_jsword_mapping",
+        &self
+          .ctxt_jsword_mapping
+          .iter()
+          .map(|k| format!("{:?}: {}", k.0, k.1.as_ref()))
+          .collect::<Vec<_>>(),
+      )
+      .field("mapping", &self.mapping)
+      .field("symbol_rel", &self.symbol_rel)
+      .finish()
+  }
+}
+
+fn find_jsword_in_current_module(
+  ctxt_jsword_mapping: &HashMap<SyntaxContext, JsWord>,
+  symbol_rel: &UnionFind<Ctxt>,
+  canonical_ctxt: SyntaxContext,
+) -> Option<JsWord> {
+  for (&ctxt, word) in ctxt_jsword_mapping.iter() {
+    if symbol_rel.equiv(ctxt.into(), canonical_ctxt.into()) {
+      return Some(word.clone());
+    }
+  }
+
+  None
+}
 
 impl<'me> VisitMut for Renamer<'me> {
   fn visit_mut_ident(&mut self, node: &mut Ident) {
@@ -34,13 +63,18 @@ impl<'me> VisitMut for Renamer<'me> {
         original_ctxt,
         node.sym.as_ref()
       );
-      if let Some(id) = self.symbol_rel.find(original_ctxt.into()) {
-        let canonical_ctxt = Ctxt::from_index(id).0;
+      if let Some(wrapped_ctxt) = self.symbol_rel.find(original_ctxt.into()) {
+        let canonical_ctxt = wrapped_ctxt.0;
         println!("canonical ctxt {:?}", canonical_ctxt);
 
-        if let Some(sym) = self.ctxt_jsword_mapping.get(&canonical_ctxt) {
+        if let Some(replacement) = self.canonical_names.get(&canonical_ctxt).map(|s| s.clone()) {
+          node.sym = replacement
+        } else if let Some(sym) =
+          find_jsword_in_current_module(&self.ctxt_jsword_mapping, self.symbol_rel, canonical_ctxt)
+        {
           println!("name to replace: {}", sym.as_ref());
           if let Some(replacement) = self.mapping.get(&sym).map(|s| s.clone()) {
+            println!("replacement {}", replacement.as_ref());
             node.sym = replacement
           }
         }

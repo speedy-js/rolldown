@@ -50,6 +50,12 @@ impl From<SyntaxContext> for Ctxt {
   }
 }
 
+impl Into<SyntaxContext> for Ctxt {
+  fn into(self) -> SyntaxContext {
+    self.0
+  }
+}
+
 impl AsRef<SyntaxContext> for Ctxt {
   fn as_ref(&self) -> &SyntaxContext {
     &self.0
@@ -112,7 +118,7 @@ pub struct GraphContainer {
   pub entries: Vec<NodeIndex>,
   pub ordered_modules: Vec<NodeIndex>,
   // pub asserted_globals: HashMap<JsWord, bool>,
-  pub canonical_names: DashMap<SyntaxContext, JsWord>,
+  pub canonical_names: HashMap<SyntaxContext, JsWord>,
   pub symbol_rel: UnionFind<Ctxt>,
   // pub globals: Globals,
 }
@@ -239,38 +245,27 @@ impl GraphContainer {
     symbol_rel: &mut UnionFind<Ctxt>,
     graph: &DepGraph,
   ) {
-    let target_ctxt: Ctxt = curr_module
+    let local_ctxt: Ctxt = curr_module
       .definitions
       .get(&import_desc.local_name)
       .unwrap()
       .clone()
       .into();
 
-    let local_ctxt: Ctxt = curr_module
-      .definitions
-      .get(&import_desc.name)
-      .unwrap()
-      .clone()
-      .into();
-
-    println!(
-      "local ctxt: {:?} target ctxt: {:?}",
-      local_ctxt, target_ctxt
-    );
-
-    symbol_rel.union(local_ctxt, target_ctxt);
+    println!("local ctxt: {:?} imported {:?}", local_ctxt, import_desc);
 
     if let Some(export_desc) = target_module
       .scanner
       .as_ref()
       .unwrap()
       .exports
-      .get(&import_desc.local_name)
+      .get(&import_desc.name)
     {
+      println!("export desc {:?}", export_desc);
       match export_desc.identifier.as_ref() {
         Some(ident) => {
           let decl_ctxt: Ctxt = target_module.definitions.get(ident).unwrap().clone().into();
-          symbol_rel.union(target_ctxt, decl_ctxt);
+          symbol_rel.union(local_ctxt, decl_ctxt);
         }
         _ => (),
       }
@@ -278,7 +273,7 @@ impl GraphContainer {
       match target_module.definitions.get(&export_desc.local_name) {
         Some(ctxt) => {
           let ctxt: Ctxt = ctxt.clone().into();
-          symbol_rel.union(target_ctxt, ctxt);
+          symbol_rel.union(local_ctxt, ctxt);
         }
         None => (),
       }

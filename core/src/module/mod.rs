@@ -11,6 +11,7 @@ use std::{collections::HashMap, hash::Hash};
 use swc_atoms::JsWord;
 use swc_common::{Mark, SyntaxContext};
 use swc_ecma_ast::{Ident, ModuleItem};
+use swc_ecma_parser::Syntax;
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
 use self::renamer::Renamer;
@@ -136,7 +137,11 @@ impl Module {
     scanner
   }
 
-  pub fn rename(&mut self, symbol_rel: &UnionFind<Ctxt>) {
+  pub fn rename(
+    &mut self,
+    symbol_rel: &UnionFind<Ctxt>,
+    canonical_names: &HashMap<SyntaxContext, JsWord>,
+  ) {
     // FIXME: use par_iter later
     self.statements.iter_mut().for_each(|stmt| {
       let mut ctxt_jsword_mapping: HashMap<SyntaxContext, JsWord> = Default::default();
@@ -152,6 +157,7 @@ impl Module {
         mapping: &self.need_renamed,
         ctxt_jsword_mapping,
         symbol_rel,
+        canonical_names,
       };
 
       println!("{:#?}", renamer);

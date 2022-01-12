@@ -9,9 +9,9 @@ use super::{helper::collect_js_word_of_pat, Scanner};
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct ImportDesc {
   pub source: JsWord,
-  // name in importer
+  // name defined in importee
   pub name: JsWord,
-  // orignal defined name
+  // name defined in current module
   pub local_name: JsWord,
 }
 

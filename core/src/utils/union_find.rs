@@ -28,10 +28,12 @@ pub trait UnifyValue {
 }
 
 impl<T: UnifyValue> UnionFind<T> {
+  /// Create a new Union Find instance
   pub fn new() -> Self {
     Self::default()
   }
 
+  /// Union two `T::Value`, `T` must impl trait `UnifyValue`
   pub fn union(&mut self, a: T::Value, b: T::Value) {
     let a_index = T::index(&a);
     let b_index = T::index(&b);
@@ -49,22 +51,47 @@ impl<T: UnifyValue> UnionFind<T> {
 
     self
       .union_map
-      .entry(self.find(a).unwrap_or(a_index))
-      .or_insert_with(|| self.find(b).unwrap_or(b_index));
+      .entry(self.find_index(a).unwrap_or(a_index))
+      .or_insert_with(|| self.find_index(b).unwrap_or(b_index));
   }
 
-  pub fn find(&self, item: T::Value) -> Option<u32> {
-    if let Some(item) = self.value_to_key.get(&item) {
-      match self.union_map.get(&item) {
+  fn _find(&self, element: T::Value) -> Option<u32> {
+    if let Some(element) = self.value_to_key.get(&element) {
+      match self.union_map.get(&element) {
         Some(internal_index) => {
           let parent_node = self.key_to_value.get(&internal_index).unwrap();
-          self.find(parent_node.clone())
+          self._find(parent_node.clone())
         }
-        None => Some(T::index(item.key())),
+        None => Some(T::index(element.key())),
       }
     } else {
       None
     }
+  }
+
+  /// Find the representative element for the given element's set
+  pub fn find(&self, element: T::Value) -> Option<T::Value> {
+    match self.find_index(element) {
+      Some(index) => Some(T::from_index(index)),
+      None => None,
+    }
+  }
+
+  /// Find the representative element's index which is defined by user for the given element's set
+  pub fn find_index(&self, element: T::Value) -> Option<u32> {
+    self._find(element)
+  }
+
+  /// Test if two elements are in the same set
+  pub fn equiv(&self, a: T::Value, b: T::Value) -> bool {
+    let a_result = self.find_index(a);
+    let b_result = self.find_index(b);
+
+    if a_result.is_none() || b_result.is_none() {
+      return false;
+    }
+
+    a_result == b_result
   }
 }
 
