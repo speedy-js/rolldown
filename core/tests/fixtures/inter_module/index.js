@@ -1,4 +1,4 @@
-import { foo as foo2 } from "./foo"
+import { foo as foo2, bar } from "./foo"
 
 const foo = () => {
    console.log("I'm the real foo function")
@@ -7,4 +7,5 @@ const foo = () => {
 (function() {
    foo();
    foo2();
+   bar();
 })();
