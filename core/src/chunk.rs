@@ -9,32 +9,40 @@ use log::debug;
 use petgraph::graph::NodeIndex;
 use rayon::prelude::*;
 use swc_atoms::JsWord;
+use swc_common::SyntaxContext;
 use swc_ecma_ast::EsVersion;
 use swc_ecma_codegen::text_writer::JsWriter;
 
-pub struct Chunk {
+use crate::graph::Ctxt;
+use crate::utils::union_find::UnionFind;
+
+pub struct Chunk<'a> {
   pub order_modules: Vec<NodeIndex>,
+  pub symbol_rel: &'a UnionFind<Ctxt>,
+  // SyntaxContext to Safe name mapping
+  pub canonical_names: HashMap<SyntaxContext, JsWord>,
 }
 
-impl Default for Chunk {
-  fn default() -> Self {
+impl<'a> Chunk<'a> {
+  pub fn new(
+    order_modules: Vec<NodeIndex>,
+    symbol_rel: &'a UnionFind<Ctxt>,
+    canonical_names: HashMap<SyntaxContext, JsWord>,
+  ) -> Self {
     Self {
-      order_modules: Default::default(),
+      order_modules,
+      symbol_rel,
+      canonical_names,
     }
   }
-}
 
-impl Chunk {
-  pub fn new(order_modules: Vec<NodeIndex>) -> Self {
-    Self { order_modules }
-  }
-
-  pub fn deconflict(&self, graph: &mut DepGraph) {
+  pub fn deconflict(&mut self, graph: &mut DepGraph) {
     let mut definers = HashMap::new();
     let mut conflicted_names = HashSet::new();
 
     self.order_modules.iter().for_each(|idx| {
       if let DepNode::Mod(module) = &graph[*idx] {
+        println!("module name: {} scope {:?}", module.id, module.scope);
         module.scope.declared_symbols.keys().for_each(|name| {
           if definers.contains_key(name) {
             conflicted_names.insert(name.clone());
@@ -60,7 +68,13 @@ impl Chunk {
 
               conflicted_names.insert(safe_name.clone());
 
-              module.need_renamed.insert(name.clone(), safe_name);
+              module.need_renamed.insert(name.clone(), safe_name.clone());
+
+              if let Some(ctxt) = module.scope.declared_symbols.get(&name) {
+                if let Some(repr_ctxt) = self.symbol_rel.find(ctxt.clone().into()) {
+                  self.canonical_names.insert(repr_ctxt.into(), safe_name);
+                }
+              }
             }
           }
         })
@@ -70,15 +84,15 @@ impl Chunk {
     definers.into_iter().for_each(|(_name, idxs)| {
       idxs.into_iter().for_each(|idx| {
         if let DepNode::Mod(module) = &mut graph[idx] {
-          module.rename();
+          module.rename(self.symbol_rel, &self.canonical_names);
         }
       });
     });
 
-    debug!("conlicted_names {:#?}", conflicted_names);
+    println!("conlicted_names {:#?}", conflicted_names);
   }
 
-  pub fn render(&self, graph: &mut DepGraph) -> String {
+  pub fn render(&mut self, graph: &mut DepGraph) -> String {
     self.deconflict(graph);
 
     let mut output = Vec::new();
