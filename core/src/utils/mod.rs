@@ -1,17 +1,12 @@
-pub mod ast;
-// pub mod chunk_assignment;
-// pub mod execution_order;
-pub mod plugin_driver;
-pub mod resolve_id;
-pub mod union_find;
-use std::collections::{HashMap, HashSet};
+
 use std::path::Path;
 
+use swc_atoms::JsWord;
 use swc_ecma_ast::{
-  BindingIdent, CallExpr, ClassDecl, Decl, DefaultDecl, EmptyStmt, EsVersion, ExportSpecifier,
-  Expr, ExprOrSuper, FnDecl, Ident, Lit, ModuleDecl, ModuleItem, Pat, Stmt, VarDecl, VarDeclarator,
+  BindingIdent, ClassDecl, Decl, DefaultDecl, EmptyStmt, EsVersion,
+  Expr, FnDecl, Ident, ModuleDecl, ModuleItem, Pat, Stmt, VarDecl, VarDeclarator,
 };
-use swc_ecma_visit::{Node, VisitAll};
+
 
 use swc_common::sync::Lrc;
 use swc_common::{
@@ -20,6 +15,9 @@ use swc_common::{
 };
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
 use swc_ecma_parser::{EsConfig, TsConfig};
+
+mod hook;
+pub use hook::*;
 
 pub mod path {
   pub fn relative_id(id: String) -> String {
@@ -111,7 +109,7 @@ pub fn parse_code(code: &str) -> Result<swc_ecma_ast::Module, ()> {
 
 use swc_common::DUMMY_SP;
 
-pub fn fold_export_decl_to_decl(module_item: &mut ModuleItem) {
+pub fn fold_export_decl_to_decl(module_item: &mut ModuleItem, default_name: &JsWord) {
   if let ModuleItem::ModuleDecl(module_decl) = &module_item {
     *module_item = match module_decl {
       // remove export { foo, baz }
@@ -126,7 +124,7 @@ pub fn fold_export_decl_to_decl(module_item: &mut ModuleItem) {
             ident: node
               .ident
               .clone()
-              .unwrap_or_else(|| Ident::new("_default".into(), DUMMY_SP)),
+              .unwrap_or_else(|| Ident::new(default_name.clone(), DUMMY_SP)),
             declare: false,
             class: node.class.clone(),
           })))
@@ -135,7 +133,7 @@ pub fn fold_export_decl_to_decl(module_item: &mut ModuleItem) {
             ident: node
               .ident
               .clone()
-              .unwrap_or_else(|| Ident::new("_default".into(), DUMMY_SP)),
+              .unwrap_or_else(|| Ident::new(default_name.clone(), DUMMY_SP)),
             declare: false,
             function: node.clone().function,
           })))
@@ -144,6 +142,7 @@ pub fn fold_export_decl_to_decl(module_item: &mut ModuleItem) {
         }
       }
       ModuleDecl::ExportDefaultExpr(export_decl) => {
+        // `export () => {}` => `const _default = () => {}`
         if let Expr::Arrow(node) = export_decl.expr.as_ref() {
           ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
             span: DUMMY_SP,
@@ -152,7 +151,7 @@ pub fn fold_export_decl_to_decl(module_item: &mut ModuleItem) {
             decls: vec![VarDeclarator {
               span: DUMMY_SP,
               name: Pat::Ident(BindingIdent {
-                id: Ident::new("_default".into(), DUMMY_SP),
+                id: Ident::new(default_name.clone(), DUMMY_SP),
                 type_ann: None,
               }),
               definite: false,
@@ -163,7 +162,7 @@ pub fn fold_export_decl_to_decl(module_item: &mut ModuleItem) {
           ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }))
         }
       }
-      // FIXME: How we handle case like `export * from './foo'`
+      // We could ignore `export * from './foo'`. Since every thing is hoisted.
       _ => ModuleItem::ModuleDecl(module_decl.clone()),
     };
   }

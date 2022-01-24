@@ -1,133 +1,146 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, Mutex},
+};
 
 use crate::{
-  graph::{DepGraph, DepNode},
-  statement::Statement,
+    module::Module, renamer::Renamer, symbol_box::SymbolBox, utils::fold_export_decl_to_decl,
 };
-use log::debug;
 
-use petgraph::graph::NodeIndex;
 use rayon::prelude::*;
-use swc_atoms::JsWord;
-use swc_common::SyntaxContext;
-use swc_ecma_ast::EsVersion;
+use swc_atoms::{js_word, JsWord};
+use swc_common::{
+    comments::{Comment, CommentKind, Comments, SingleThreadedComments},
+    BytePos, SyntaxContext, DUMMY_SP,
+};
+use swc_ecma_ast::{EmptyStmt, EsVersion, ModuleItem, Stmt};
 use swc_ecma_codegen::text_writer::JsWriter;
+use swc_ecma_visit::VisitMutWith;
 
-use crate::graph::Ctxt;
-use crate::utils::union_find::UnionFind;
-
-pub struct Chunk<'a> {
-  pub order_modules: Vec<NodeIndex>,
-  pub symbol_rel: &'a UnionFind<Ctxt>,
-  // SyntaxContext to Safe name mapping
-  pub canonical_names: HashMap<SyntaxContext, JsWord>,
+pub struct Chunk {
+    pub order_modules: Vec<String>,
+    pub symbol_box: Arc<Mutex<SymbolBox>>,
+    // SyntaxContext to Safe name mapping
+    pub canonical_names: HashMap<SyntaxContext, JsWord>,
 }
 
-impl<'a> Chunk<'a> {
-  pub fn new(
-    order_modules: Vec<NodeIndex>,
-    symbol_rel: &'a UnionFind<Ctxt>,
-    canonical_names: HashMap<SyntaxContext, JsWord>,
-  ) -> Self {
-    Self {
-      order_modules,
-      symbol_rel,
-      canonical_names,
+impl Chunk {
+    pub fn new(
+        order_modules: Vec<String>,
+        symbol_box: Arc<Mutex<SymbolBox>>,
+        canonical_names: HashMap<SyntaxContext, JsWord>,
+    ) -> Self {
+        Self {
+            order_modules,
+            symbol_box,
+            canonical_names,
+        }
     }
-  }
 
-  pub fn deconflict(&mut self, graph: &mut DepGraph) {
-    let mut definers = HashMap::new();
-    let mut conflicted_names = HashSet::new();
-
-    self.order_modules.iter().for_each(|idx| {
-      if let DepNode::Mod(module) = &graph[*idx] {
-        println!("module name: {} scope {:?}", module.id, module.scope);
-        module.scope.declared_symbols.keys().for_each(|name| {
-          if definers.contains_key(name) {
-            conflicted_names.insert(name.clone());
-          } else {
-            definers.insert(name.clone(), vec![]);
-          }
-
-          definers.get_mut(name).unwrap().push(*idx);
-        });
-      }
-    });
-
-    conflicted_names.clone().iter().for_each(|name| {
-      let module_idxs = definers.get(name).unwrap();
-      if module_idxs.len() > 1 {
-        module_idxs.iter().enumerate().for_each(|(cnt, idx)| {
-          if let DepNode::Mod(module) = &mut graph[*idx] {
-            if !module.is_entry {
-              let mut safe_name: JsWord = format!("{}${}", name.to_string(), cnt).into();
-              while conflicted_names.contains(&safe_name) {
-                safe_name = format!("{}_", safe_name.to_string()).into();
-              }
-
-              conflicted_names.insert(safe_name.clone());
-
-              module.need_renamed.insert(name.clone(), safe_name.clone());
-
-              if let Some(ctxt) = module.scope.declared_symbols.get(&name) {
-                if let Some(repr_ctxt) = self.symbol_rel.find(ctxt.clone().into()) {
-                  self.canonical_names.insert(repr_ctxt.into(), safe_name);
+    pub fn deconflict(&mut self, modules: &mut HashMap<String, Module>) {
+        let mut used_names = HashSet::new();
+        let mut mark_to_name = HashMap::new();
+        modules.values().for_each(|module| {
+            module.delcared.iter().for_each(|(name, mark)| {
+                let root_mark = self.symbol_box.lock().unwrap().find_root(*mark);
+                if mark_to_name.contains_key(&root_mark) {
+                } else {
+                    let mut name = name.to_string();
+                    let mut count = 0;
+                    while used_names.contains(&name) {
+                        name = format!("{}${}", name, count);
+                        count += 1;
+                    }
+                    mark_to_name.insert(root_mark, name.clone());
+                    used_names.insert(name);
                 }
-              }
+            });
+        });
+
+        modules.par_iter_mut().for_each(|(_, module)| {
+            let mut renamer = Renamer {
+                mark_to_names: &mark_to_name,
+                symbox_box: self.symbol_box.clone(),
+            };
+            module.ast.visit_mut_with(&mut renamer);
+        });
+        println!("mark_to_name {:#?}", mark_to_name);
+    }
+
+    pub fn render(&mut self, modules: &mut HashMap<String, Module>) -> String {
+        modules.par_iter_mut().for_each(|(_key, module)| {
+            let mut default_export_name = module
+                .suggested_names
+                .get(&js_word!("default"))
+                .map(|s| s.to_string())
+                .unwrap_or("default_".to_string());
+            while module
+                .delcared
+                .contains_key(&default_export_name.clone().into())
+            {
+                default_export_name.push('_');
             }
-          }
-        })
-      }
-    });
+            if module.exports.contains_key(&"default".into()) {
+                module.delcared.insert(
+                    default_export_name.clone().into(),
+                    module.exports.get(&"default".into()).unwrap().clone(),
+                );
+            }
+            println!("default_export_name {}", default_export_name);
+            module.ast.body.iter_mut().for_each(|module_item| {
+                fold_export_decl_to_decl(module_item, &default_export_name.clone().into());
+            });
+        });
 
-    definers.into_iter().for_each(|(_name, idxs)| {
-      idxs.into_iter().for_each(|idx| {
-        if let DepNode::Mod(module) = &mut graph[idx] {
-          module.rename(self.symbol_rel, &self.canonical_names);
-        }
-      });
-    });
+        self.deconflict(modules);
 
-    println!("conlicted_names {:#?}", conflicted_names);
-  }
+        let mut output = Vec::new();
+        let comments = SingleThreadedComments::default();
 
-  pub fn render(&mut self, graph: &mut DepGraph) -> String {
-    self.deconflict(graph);
+        // TODO: There's an problem in SWC, so we had to do following. See https://github.com/swc-project/swc/issues/3354.
+        self.order_modules.iter().for_each(|idx| {
+            let module = modules.get_mut(idx).unwrap();
+            module.ast.body.insert(
+                0,
+                ModuleItem::Stmt(Stmt::Empty(EmptyStmt {
+                    span: swc_common::Span {
+                        lo: module.ast.span.lo,
+                        hi: module.ast.span.hi,
+                        ..Default::default()
+                    },
+                })),
+            );
+            comments.add_leading(
+                module.ast.span.lo,
+                Comment {
+                    kind: CommentKind::Line,
+                    span: DUMMY_SP,
+                    text: format!(" {}", module.id),
+                },
+            );
+            println!("module.ast.span.lo {:?}", module.ast.span.lo);
+        });
 
-    let mut output = Vec::new();
+        println!("comments {:#?}", comments);
 
-    let mut emitter = swc_ecma_codegen::Emitter {
-      cfg: swc_ecma_codegen::Config { minify: false },
-      cm: crate::graph::SOURCE_MAP.clone(),
-      comments: None,
-      wr: Box::new(JsWriter::with_target(
-        crate::graph::SOURCE_MAP.clone(),
-        "\n",
-        &mut output,
-        None,
-        EsVersion::latest(),
-      )),
-    };
+        let mut emitter = swc_ecma_codegen::Emitter {
+            cfg: swc_ecma_codegen::Config { minify: false },
+            cm: crate::graph::SOURCE_MAP.clone(),
+            comments: Some(&comments),
+            wr: Box::new(JsWriter::with_target(
+                crate::graph::SOURCE_MAP.clone(),
+                "\n",
+                &mut output,
+                None,
+                EsVersion::latest(),
+            )),
+        };
 
-    self
-      .order_modules
-      .par_iter()
-      .flat_map(|idx| {
-        if let DepNode::Mod(module) = &graph[*idx] {
-          module.render()
-        } else {
-          vec![]
-        }
-      })
-      .collect::<Vec<Statement>>()
-      .iter()
-      .for_each(|stmt| {
-        if !stmt.is_import_declaration {
-          emitter.emit_module_item(&stmt.node).unwrap();
-        }
-      });
+        self.order_modules.iter().for_each(|idx| {
+            let module = modules.get(idx).unwrap();
+            emitter.emit_module(&module.ast).unwrap();
+        });
 
-    String::from_utf8(output).unwrap()
-  }
+        String::from_utf8(output).unwrap()
+    }
 }
