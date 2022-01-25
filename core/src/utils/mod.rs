@@ -151,7 +151,9 @@ pub fn fold_export_decl_to_decl(
       }
       ModuleDecl::ExportDefaultExpr(export_decl) => {
         // `export () => {}` => `const _default = () => {}`
-        if let Expr::Arrow(node) = export_decl.expr.as_ref() {
+        if let Expr::Ident(node) = export_decl.expr.as_ref() {
+          create_empty_statement()
+        } else {
           ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
             span: DUMMY_SP,
             kind: swc_ecma_ast::VarDeclKind::Var,
@@ -163,11 +165,9 @@ pub fn fold_export_decl_to_decl(
                 type_ann: None,
               }),
               definite: false,
-              init: Some(Box::new(Expr::Arrow(node.clone()))),
+              init: Some(export_decl.expr.clone()),
             }],
           })))
-        } else {
-          create_empty_statement()
         }
       }
       ModuleDecl::ExportAll(export_all) => {
