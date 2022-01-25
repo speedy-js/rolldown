@@ -12,8 +12,7 @@ fn main() {
   graph.build();
   let mut bundle = Bundle::new(graph);
 
-
-  let output  = bundle.generate();
+  let output = bundle.generate();
   std::fs::write("./output.js", output.clone()).unwrap();
   println!("output {}", output);
 }

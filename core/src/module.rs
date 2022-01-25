@@ -1,5 +1,5 @@
+use crate::ast;
 use crate::symbol_box::SymbolBox;
-use crate::{ast, symbol_box};
 use std::collections::HashMap;
 
 use std::{collections::HashSet, hash::Hash};

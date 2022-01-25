@@ -2,29 +2,29 @@ use crate::{chunk::Chunk, graph};
 
 #[non_exhaustive]
 pub struct Bundle {
-    pub graph_container: graph::GraphContainer,
+  pub graph_container: graph::GraphContainer,
 }
 
 impl Bundle {
-    pub fn new(graph: graph::GraphContainer) -> Self {
-        Self {
-            graph_container: graph,
-        }
+  pub fn new(graph: graph::GraphContainer) -> Self {
+    Self {
+      graph_container: graph,
     }
+  }
 
-    pub fn generate(&mut self) -> String {
-        let mut chunk = Chunk {
-            order_modules: self
-                .graph_container
-                .ordered_modules
-                .clone()
-                .into_iter()
-                .map(|idx| self.graph_container.graph[idx].clone())
-                .collect(),
-            symbol_box: self.graph_container.symbol_box.clone(),
-            canonical_names: Default::default(),
-        };
+  pub fn generate(&mut self) -> String {
+    let mut chunk = Chunk {
+      order_modules: self
+        .graph_container
+        .ordered_modules
+        .clone()
+        .into_iter()
+        .map(|idx| self.graph_container.graph[idx].clone())
+        .collect(),
+      symbol_box: self.graph_container.symbol_box.clone(),
+      canonical_names: Default::default(),
+    };
 
-        chunk.render(&mut self.graph_container.id_to_module)
-    }
+    chunk.render(&mut self.graph_container.id_to_module)
+  }
 }

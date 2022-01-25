@@ -1,25 +1,24 @@
 use crossbeam::channel::Sender;
 use log::debug;
 use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
+  collections::{HashMap, HashSet},
+  sync::{Arc, Mutex},
 };
 use swc_atoms::JsWord;
 use swc_ecma_ast::{
-    ArrowExpr, BindingIdent, BlockStmt, BlockStmtOrExpr, CallExpr, CatchClause, ClassDecl,
-    ClassExpr, ClassMethod, ClassProp, Constructor, Decl, DefaultDecl, ExportDefaultDecl, Expr,
-    FnDecl, FnExpr, ForInStmt, ForOfStmt, ForStmt, Function, Ident, ImportDecl,
-    ImportNamedSpecifier, MemberExpr, MethodProp, ModuleDecl, ModuleItem, ObjectLit, Param, Pat,
-    PatOrExpr, PrivateMethod, SetterProp, Stmt, TaggedTpl, Tpl, VarDecl, VarDeclKind,
-    VarDeclarator,
+  ArrowExpr, BindingIdent, BlockStmt, BlockStmtOrExpr, CallExpr, CatchClause, ClassDecl, ClassExpr,
+  ClassMethod, ClassProp, Constructor, Decl, DefaultDecl, ExportDefaultDecl, Expr, FnDecl, FnExpr,
+  ForInStmt, ForOfStmt, ForStmt, Function, Ident, ImportDecl, ImportNamedSpecifier, MemberExpr,
+  MethodProp, ModuleDecl, ModuleItem, ObjectLit, Param, Pat, PatOrExpr, PrivateMethod, SetterProp,
+  Stmt, TaggedTpl, Tpl, VarDecl, VarDeclKind, VarDeclarator,
 };
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
 use crate::{ext::MarkExt, graph::Msg, symbol_box::SymbolBox};
 
 use self::{
-    rel::ReExportInfo,
-    scope::{Scope, ScopeKind},
+  rel::ReExportInfo,
+  scope::{Scope, ScopeKind},
 };
 
 mod helper;
@@ -33,722 +32,723 @@ use rel::{DynImportDesc, ExportDesc, ImportInfo, ReExportDesc};
 // TODO: Fold constants
 #[derive(Clone)]
 pub struct Scanner {
-    // scope
-    pub stacks: Vec<Scope>,
-    // mark
-    pub ident_type: IdentType,
-    // relationships between modules.
-    pub imports: HashMap<JsWord, ImportInfo>,
-    pub import_infos: HashMap<JsWord, ImportInfo>,
-    pub exports: HashMap<JsWord, ExportDesc>,
-    pub re_exports: HashMap<JsWord, ReExportDesc>,
-    pub re_export_infos: HashMap<JsWord, ReExportInfo>,
-    pub export_all_sources: HashSet<JsWord>,
-    pub dynamic_imports: HashSet<DynImportDesc>,
-    pub sources: HashSet<JsWord>,
-    pub symbol_box: Arc<Mutex<SymbolBox>>,
-    pub tx: Sender<Msg>,
+  // scope
+  pub stacks: Vec<Scope>,
+  // mark
+  pub ident_type: IdentType,
+  // relationships between modules.
+  pub imports: HashMap<JsWord, ImportInfo>,
+  pub import_infos: HashMap<JsWord, ImportInfo>,
+  pub exports: HashMap<JsWord, ExportDesc>,
+  pub re_exports: HashMap<JsWord, ReExportDesc>,
+  pub re_export_infos: HashMap<JsWord, ReExportInfo>,
+  pub export_all_sources: HashSet<JsWord>,
+  pub dynamic_imports: HashSet<DynImportDesc>,
+  pub sources: HashSet<JsWord>,
+  pub symbol_box: Arc<Mutex<SymbolBox>>,
+  pub tx: Sender<Msg>,
 }
 
 impl Scanner {
-    pub fn new(symbol_box: Arc<Mutex<SymbolBox>>, tx: Sender<Msg>) -> Self {
-        Self {
-            // scope
-            stacks: vec![Scope::new(ScopeKind::Fn)],
-            // rel
-            imports: Default::default(),
-            exports: Default::default(),
-            re_exports: Default::default(),
-            re_export_infos: Default::default(),
-            export_all_sources: Default::default(),
-            dynamic_imports: Default::default(),
-            sources: Default::default(),
-            import_infos: Default::default(),
-            ident_type: IdentType::Ref,
-            symbol_box,
-            tx,
+  pub fn new(symbol_box: Arc<Mutex<SymbolBox>>, tx: Sender<Msg>) -> Self {
+    Self {
+      // scope
+      stacks: vec![Scope::new(ScopeKind::Fn)],
+      // rel
+      imports: Default::default(),
+      exports: Default::default(),
+      re_exports: Default::default(),
+      re_export_infos: Default::default(),
+      export_all_sources: Default::default(),
+      dynamic_imports: Default::default(),
+      sources: Default::default(),
+      import_infos: Default::default(),
+      ident_type: IdentType::Ref,
+      symbol_box,
+      tx,
+    }
+  }
+
+  pub fn declare(&mut self, id: &mut Ident, kind: VarDeclKind) {
+    let is_var_decl = match kind {
+      VarDeclKind::Let => false,
+      VarDeclKind::Const => false,
+      VarDeclKind::Var => true,
+    };
+
+    debug!(
+      "declare {} {}",
+      match kind {
+        VarDeclKind::Let => "let",
+        VarDeclKind::Const => "const",
+        VarDeclKind::Var => "var",
+      },
+      id.sym.to_string()
+    );
+
+    self
+      .stacks
+      .iter_mut()
+      .rev()
+      .find(|scope| {
+        if is_var_decl {
+          scope.kind == ScopeKind::Fn
+        } else {
+          true
         }
-    }
-
-    pub fn declare(&mut self, id: &mut Ident, kind: VarDeclKind) {
-        let is_var_decl = match kind {
-            VarDeclKind::Let => false,
-            VarDeclKind::Const => false,
-            VarDeclKind::Var => true,
-        };
-
-        debug!(
-            "declare {} {}",
-            match kind {
-                VarDeclKind::Let => "let",
-                VarDeclKind::Const => "const",
-                VarDeclKind::Var => "var",
-            },
-            id.sym.to_string()
-        );
-
-        self.stacks
-            .iter_mut()
-            .rev()
-            .find(|scope| {
-                if is_var_decl {
-                    scope.kind == ScopeKind::Fn
-                } else {
-                    true
-                }
-            })
-            .map(|scope| {
-                let name = id.sym.clone();
-                if let Some(declared_kind) = scope.declared_symbols_kind.get(&name) {
-                    // Valid
-                    // var a; var a;
-                    assert!(
-                        declared_kind == &VarDeclKind::Var && is_var_decl,
-                        " duplicate name {}",
-                        name
-                    );
-                }
-                let mark = self.symbol_box.lock().unwrap().new_mark();
-                scope
-                    .declared_symbols_kind
-                    .insert(id.sym.clone().clone(), kind);
-                scope.declared_symbols.insert(id.sym.clone().clone(), mark);
-                id.span.ctxt = mark.as_ctxt();
-                scope.declared_symbols.insert(id.sym.clone(), mark);
-            });
-    }
-
-    pub fn resolve_ctxt_for_ident(&mut self, ident: &mut Ident) {
-        for scope in &mut self.stacks.iter_mut().rev() {
-            if let Some(mark) = scope.declared_symbols.get(&ident.sym) {
-                ident.span.ctxt = mark.as_ctxt();
-                break;
-            };
+      })
+      .map(|scope| {
+        let name = id.sym.clone();
+        if let Some(declared_kind) = scope.declared_symbols_kind.get(&name) {
+          // Valid
+          // var a; var a;
+          assert!(
+            declared_kind == &VarDeclKind::Var && is_var_decl,
+            " duplicate name {}",
+            name
+          );
         }
-    }
+        let mark = self.symbol_box.lock().unwrap().new_mark();
+        scope
+          .declared_symbols_kind
+          .insert(id.sym.clone().clone(), kind);
+        scope.declared_symbols.insert(id.sym.clone().clone(), mark);
+        id.span.ctxt = mark.as_ctxt();
+        scope.declared_symbols.insert(id.sym.clone(), mark);
+      });
+  }
 
-    fn visit_mut_stmt_within_child_scope(&mut self, s: &mut Stmt) {
-        let scope = Scope::new(ScopeKind::Block);
-        self.stacks.push(scope);
-        self.visit_mut_stmt_within_same_scope(s);
-        self.stacks.pop();
+  pub fn resolve_ctxt_for_ident(&mut self, ident: &mut Ident) {
+    for scope in &mut self.stacks.iter_mut().rev() {
+      if let Some(mark) = scope.declared_symbols.get(&ident.sym) {
+        ident.span.ctxt = mark.as_ctxt();
+        break;
+      };
     }
+  }
 
-    fn visit_mut_stmt_within_same_scope(&mut self, s: &mut Stmt) {
-        match s {
-            Stmt::Block(s) => {
-                s.visit_mut_children_with(self);
-            }
-            _ => s.visit_mut_with(self),
-        }
+  fn visit_mut_stmt_within_child_scope(&mut self, s: &mut Stmt) {
+    let scope = Scope::new(ScopeKind::Block);
+    self.stacks.push(scope);
+    self.visit_mut_stmt_within_same_scope(s);
+    self.stacks.pop();
+  }
+
+  fn visit_mut_stmt_within_same_scope(&mut self, s: &mut Stmt) {
+    match s {
+      Stmt::Block(s) => {
+        s.visit_mut_children_with(self);
+      }
+      _ => s.visit_mut_with(self),
     }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdentType {
-    Binding(VarDeclKind),
-    Ref,
-    Label,
+  Binding(VarDeclKind),
+  Ref,
+  Label,
 }
 
 impl VisitMut for Scanner {
-    noop_visit_mut_type!();
+  noop_visit_mut_type!();
 
-    fn visit_mut_module(&mut self, node: &mut swc_ecma_ast::Module) {
-        let mut hoister = Hoister::new(self);
-        node.visit_mut_children_with(&mut hoister);
-        node.visit_mut_children_with(self);
+  fn visit_mut_module(&mut self, node: &mut swc_ecma_ast::Module) {
+    let mut hoister = Hoister::new(self);
+    node.visit_mut_children_with(&mut hoister);
+    node.visit_mut_children_with(self);
+  }
+
+  fn visit_mut_module_decl(&mut self, node: &mut ModuleDecl) {
+    self.add_import(node);
+    self.add_export(node);
+
+    node.visit_mut_children_with(self);
+  }
+
+  fn visit_mut_call_expr(&mut self, node: &mut CallExpr) {
+    self.add_dynamic_import(node);
+
+    node.visit_mut_children_with(self);
+  }
+
+  #[inline]
+  fn visit_mut_import_decl(&mut self, _: &mut ImportDecl) {
+    // We alreay done this in Hoister
+    // self.ident_type = IdentType::Binding(VarDeclKind::Const);
+    // n.visit_mut_children_with(self);
+  }
+
+  fn visit_mut_arrow_expr(&mut self, e: &mut ArrowExpr) {
+    // let child_mark = Mark::fresh(Mark::root());
+
+    self.push_scope(ScopeKind::Fn);
+
+    let old = self.ident_type;
+    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    e.params.visit_mut_with(self);
+    self.ident_type = old;
+    match &mut e.body {
+      BlockStmtOrExpr::BlockStmt(s) => s.stmts.visit_mut_with(self),
+      BlockStmtOrExpr::Expr(e) => e.visit_mut_with(self),
+    }
+    self.pop_scope();
+  }
+
+  fn visit_mut_binding_ident(&mut self, i: &mut BindingIdent) {
+    let ident_type = self.ident_type;
+
+    self.ident_type = ident_type;
+    i.id.visit_mut_with(self);
+    // FIXME: what???
+    self.ident_type = ident_type;
+  }
+
+  fn visit_mut_block_stmt(&mut self, block: &mut BlockStmt) {
+    self.push_scope(ScopeKind::Block);
+    block.visit_mut_children_with(self);
+    self.pop_scope();
+  }
+
+  /// Handle body of the arrow functions
+  fn visit_mut_block_stmt_or_expr(&mut self, node: &mut BlockStmtOrExpr) {
+    match node {
+      BlockStmtOrExpr::BlockStmt(block) => block.visit_mut_children_with(self).into(),
+      BlockStmtOrExpr::Expr(e) => e.visit_mut_with(self).into(),
+    }
+  }
+
+  fn visit_mut_catch_clause(&mut self, c: &mut CatchClause) {
+    self.push_scope(ScopeKind::Block);
+
+    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    c.param.visit_mut_with(self);
+    self.ident_type = IdentType::Ref;
+
+    c.body.visit_mut_children_with(self);
+    self.pop_scope();
+  }
+
+  fn visit_mut_class_decl(&mut self, n: &mut ClassDecl) {
+    self.declare(&mut n.ident, VarDeclKind::Let);
+
+    self.push_scope(ScopeKind::Fn);
+
+    self.ident_type = IdentType::Ref;
+
+    n.class.visit_mut_with(self);
+
+    self.pop_scope();
+  }
+
+  fn visit_mut_class_expr(&mut self, n: &mut ClassExpr) {
+    self.push_scope(ScopeKind::Fn);
+
+    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    n.ident.visit_mut_with(self);
+    self.ident_type = IdentType::Ref;
+
+    n.class.visit_mut_with(self);
+
+    self.pop_scope();
+  }
+
+  fn visit_mut_class_method(&mut self, m: &mut ClassMethod) {
+    m.key.visit_mut_with(self);
+
+    self.push_scope(ScopeKind::Fn);
+
+    m.function.visit_mut_with(self);
+
+    self.pop_scope();
+  }
+
+  fn visit_mut_class_prop(&mut self, p: &mut ClassProp) {
+    p.decorators.visit_mut_with(self);
+
+    if p.computed {
+      let old = self.ident_type;
+      self.ident_type = IdentType::Binding(VarDeclKind::Var);
+      p.key.visit_mut_with(self);
+      self.ident_type = old;
     }
 
-    fn visit_mut_module_decl(&mut self, node: &mut ModuleDecl) {
-        self.add_import(node);
-        self.add_export(node);
+    let old = self.ident_type;
+    self.ident_type = IdentType::Ref;
+    p.value.visit_mut_with(self);
+    self.ident_type = old;
 
-        node.visit_mut_children_with(self);
+    // p.type_ann.visit_mut_with(self);
+  }
+
+  fn visit_mut_constructor(&mut self, c: &mut Constructor) {
+    self.push_scope(ScopeKind::Fn);
+
+    let old = self.ident_type;
+    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    c.params.visit_mut_with(self);
+    self.ident_type = old;
+
+    match &mut c.body {
+      Some(body) => {
+        body.visit_mut_children_with(self);
+      }
+      None => {}
     }
 
-    fn visit_mut_call_expr(&mut self, node: &mut CallExpr) {
-        self.add_dynamic_import(node);
+    self.pop_scope();
+  }
 
-        node.visit_mut_children_with(self);
-    }
+  fn visit_mut_decl(&mut self, decl: &mut Decl) {
+    decl.visit_mut_children_with(self)
+  }
 
-    #[inline]
-    fn visit_mut_import_decl(&mut self, _: &mut ImportDecl) {
-        // We alreay done this in Hoister
-        // self.ident_type = IdentType::Binding(VarDeclKind::Const);
-        // n.visit_mut_children_with(self);
-    }
-
-    fn visit_mut_arrow_expr(&mut self, e: &mut ArrowExpr) {
-        // let child_mark = Mark::fresh(Mark::root());
-
-        self.push_scope(ScopeKind::Fn);
-
-        let old = self.ident_type;
-        self.ident_type = IdentType::Binding(VarDeclKind::Var);
-        e.params.visit_mut_with(self);
-        self.ident_type = old;
-        match &mut e.body {
-            BlockStmtOrExpr::BlockStmt(s) => s.stmts.visit_mut_with(self),
-            BlockStmtOrExpr::Expr(e) => e.visit_mut_with(self),
+  fn visit_mut_export_default_decl(&mut self, e: &mut ExportDefaultDecl) {
+    // Treat default exported functions and classes as declarations
+    // even though they are parsed as expressions.
+    match &mut e.decl {
+      DefaultDecl::Fn(f) => {
+        if f.ident.is_some() {
+          self.push_scope(ScopeKind::Fn);
+          f.function.visit_mut_with(self);
+          self.pop_scope();
+        } else {
+          f.visit_mut_with(self)
         }
-        self.pop_scope();
+      }
+      DefaultDecl::Class(c) => {
+        // Skip class expression visitor to treat as a declaration.
+        c.class.visit_mut_with(self)
+      }
+      _ => e.visit_mut_children_with(self),
     }
+  }
 
-    fn visit_mut_binding_ident(&mut self, i: &mut BindingIdent) {
-        let ident_type = self.ident_type;
+  fn visit_mut_expr(&mut self, expr: &mut Expr) {
+    let old = self.ident_type;
+    self.ident_type = IdentType::Ref;
+    expr.visit_mut_children_with(self);
+    self.ident_type = old;
+  }
 
-        self.ident_type = ident_type;
-        i.id.visit_mut_with(self);
-        // FIXME: what???
-        self.ident_type = ident_type;
+  fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
+    self.push_scope(ScopeKind::Fn);
+
+    node.function.visit_mut_with(self);
+
+    self.pop_scope();
+  }
+
+  fn visit_mut_fn_expr(&mut self, e: &mut FnExpr) {
+    self.push_scope(ScopeKind::Fn);
+
+    if let Some(ident) = &mut e.ident {
+      self.declare(ident, VarDeclKind::Var);
     }
+    e.function.visit_mut_with(self);
 
-    fn visit_mut_block_stmt(&mut self, block: &mut BlockStmt) {
-        self.push_scope(ScopeKind::Block);
-        block.visit_mut_children_with(self);
-        self.pop_scope();
+    self.pop_scope();
+  }
+
+  fn visit_mut_for_in_stmt(&mut self, n: &mut ForInStmt) {
+    self.push_scope(ScopeKind::Block);
+
+    n.left.visit_mut_with(self);
+    n.right.visit_mut_with(self);
+
+    self.visit_mut_stmt_within_child_scope(&mut *n.body);
+
+    self.pop_scope();
+  }
+
+  fn visit_mut_for_of_stmt(&mut self, n: &mut ForOfStmt) {
+    self.push_scope(ScopeKind::Block);
+
+    n.left.visit_mut_with(self);
+    n.right.visit_mut_with(self);
+
+    self.visit_mut_stmt_within_child_scope(&mut *n.body);
+    self.pop_scope();
+  }
+
+  fn visit_mut_for_stmt(&mut self, n: &mut ForStmt) {
+    self.push_scope(ScopeKind::Block);
+
+    n.init.visit_mut_with(self);
+    self.ident_type = IdentType::Ref;
+    n.test.visit_mut_with(self);
+    self.ident_type = IdentType::Ref;
+    n.update.visit_mut_with(self);
+
+    self.visit_mut_stmt_within_same_scope(&mut *n.body);
+
+    self.pop_scope();
+  }
+
+  fn visit_mut_function(&mut self, f: &mut Function) {
+    self.ident_type = IdentType::Ref;
+    f.decorators.visit_mut_with(self);
+
+    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    f.params.visit_mut_with(self);
+
+    self.ident_type = IdentType::Ref;
+    match &mut f.body {
+      Some(body) => {
+        // Prevent creating new scope.
+        body.visit_mut_children_with(self);
+      }
+      None => {}
     }
+  }
 
-    /// Handle body of the arrow functions
-    fn visit_mut_block_stmt_or_expr(&mut self, node: &mut BlockStmtOrExpr) {
-        match node {
-            BlockStmtOrExpr::BlockStmt(block) => block.visit_mut_children_with(self).into(),
-            BlockStmtOrExpr::Expr(e) => e.visit_mut_with(self).into(),
-        }
+  fn visit_mut_ident(&mut self, i: &mut Ident) {
+    match self.ident_type {
+      IdentType::Binding(kind) => self.declare(i, kind),
+      IdentType::Ref => {
+        self.resolve_ctxt_for_ident(i);
+      }
+      // We currently does not touch labels
+      IdentType::Label => {}
     }
+  }
 
-    fn visit_mut_catch_clause(&mut self, c: &mut CatchClause) {
-        self.push_scope(ScopeKind::Block);
+  fn visit_mut_import_named_specifier(&mut self, s: &mut ImportNamedSpecifier) {
+    let old = self.ident_type;
+    self.ident_type = IdentType::Binding(VarDeclKind::Const);
+    s.local.visit_mut_with(self);
+    self.ident_type = old;
+  }
 
-        self.ident_type = IdentType::Binding(VarDeclKind::Var);
-        c.param.visit_mut_with(self);
-        self.ident_type = IdentType::Ref;
+  /// Leftmost one of a member expression should be resolved.
+  fn visit_mut_member_expr(&mut self, e: &mut MemberExpr) {
+    e.obj.visit_mut_with(self);
 
-        c.body.visit_mut_children_with(self);
-        self.pop_scope();
+    if e.computed {
+      e.prop.visit_mut_with(self);
     }
+  }
 
-    fn visit_mut_class_decl(&mut self, n: &mut ClassDecl) {
-        self.declare(&mut n.ident, VarDeclKind::Let);
-
-        self.push_scope(ScopeKind::Fn);
-
-        self.ident_type = IdentType::Ref;
-
-        n.class.visit_mut_with(self);
-
-        self.pop_scope();
-    }
+  // TODO: How should I handle this?
+  // typed!(visit_mut_ts_namespace_export_decl, TsNamespaceExportDecl);
 
-    fn visit_mut_class_expr(&mut self, n: &mut ClassExpr) {
-        self.push_scope(ScopeKind::Fn);
+  // track_ident_mut!();
 
-        self.ident_type = IdentType::Binding(VarDeclKind::Var);
-        n.ident.visit_mut_with(self);
-        self.ident_type = IdentType::Ref;
+  fn visit_mut_method_prop(&mut self, m: &mut MethodProp) {
+    m.key.visit_mut_with(self);
 
-        n.class.visit_mut_with(self);
-
-        self.pop_scope();
-    }
+    {
+      self.push_scope(ScopeKind::Fn);
 
-    fn visit_mut_class_method(&mut self, m: &mut ClassMethod) {
-        m.key.visit_mut_with(self);
+      m.function.visit_mut_with(self);
+      self.pop_scope();
+    };
+  }
 
-        self.push_scope(ScopeKind::Fn);
+  fn visit_mut_module_items(&mut self, stmts: &mut Vec<ModuleItem>) {
+    stmts.visit_mut_children_with(self);
+  }
 
-        m.function.visit_mut_with(self);
+  fn visit_mut_object_lit(&mut self, o: &mut ObjectLit) {
+    self.push_scope(ScopeKind::Block);
 
-        self.pop_scope();
-    }
+    o.visit_mut_children_with(self);
 
-    fn visit_mut_class_prop(&mut self, p: &mut ClassProp) {
-        p.decorators.visit_mut_with(self);
+    self.pop_scope();
+  }
 
-        if p.computed {
-            let old = self.ident_type;
-            self.ident_type = IdentType::Binding(VarDeclKind::Var);
-            p.key.visit_mut_with(self);
-            self.ident_type = old;
-        }
+  fn visit_mut_param(&mut self, param: &mut Param) {
+    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    param.visit_mut_children_with(self);
+  }
 
-        let old = self.ident_type;
-        self.ident_type = IdentType::Ref;
-        p.value.visit_mut_with(self);
-        self.ident_type = old;
+  fn visit_mut_pat(&mut self, p: &mut Pat) {
+    p.visit_mut_children_with(self);
+  }
 
-        // p.type_ann.visit_mut_with(self);
-    }
+  fn visit_mut_private_method(&mut self, m: &mut PrivateMethod) {
+    m.key.visit_mut_with(self);
 
-    fn visit_mut_constructor(&mut self, c: &mut Constructor) {
-        self.push_scope(ScopeKind::Fn);
+    self.push_scope(ScopeKind::Fn);
+    m.function.visit_mut_with(self);
+    self.pop_scope();
+  }
 
-        let old = self.ident_type;
-        self.ident_type = IdentType::Binding(VarDeclKind::Var);
-        c.params.visit_mut_with(self);
-        self.ident_type = old;
+  // fn visit_mut_private_name(&mut self, _: &mut PrivateName) {}
 
-        match &mut c.body {
-            Some(body) => {
-                body.visit_mut_children_with(self);
-            }
-            None => {}
-        }
+  fn visit_mut_setter_prop(&mut self, n: &mut SetterProp) {
+    n.key.visit_mut_with(self);
 
-        self.pop_scope();
-    }
+    self.push_scope(ScopeKind::Fn);
+    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    n.param.visit_mut_with(self);
+    n.body.visit_mut_with(self);
+    self.pop_scope();
+  }
 
-    fn visit_mut_decl(&mut self, decl: &mut Decl) {
-        decl.visit_mut_children_with(self)
-    }
+  fn visit_mut_stmts(&mut self, stmts: &mut Vec<Stmt>) {
+    stmts.visit_mut_children_with(self)
+  }
 
-    fn visit_mut_export_default_decl(&mut self, e: &mut ExportDefaultDecl) {
-        // Treat default exported functions and classes as declarations
-        // even though they are parsed as expressions.
-        match &mut e.decl {
-            DefaultDecl::Fn(f) => {
-                if f.ident.is_some() {
-                    self.push_scope(ScopeKind::Fn);
-                    f.function.visit_mut_with(self);
-                    self.pop_scope();
-                } else {
-                    f.visit_mut_with(self)
-                }
-            }
-            DefaultDecl::Class(c) => {
-                // Skip class expression visitor to treat as a declaration.
-                c.class.visit_mut_with(self)
-            }
-            _ => e.visit_mut_children_with(self),
-        }
-    }
-
-    fn visit_mut_expr(&mut self, expr: &mut Expr) {
-        let old = self.ident_type;
-        self.ident_type = IdentType::Ref;
-        expr.visit_mut_children_with(self);
-        self.ident_type = old;
-    }
-
-    fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
-        self.push_scope(ScopeKind::Fn);
-
-        node.function.visit_mut_with(self);
+  fn visit_mut_var_decl(&mut self, decl: &mut VarDecl) {
+    let ident_type = self.ident_type;
+    self.ident_type = IdentType::Binding(decl.kind.clone());
+    decl.decls.visit_mut_with(self);
+    self.ident_type = ident_type;
+  }
 
-        self.pop_scope();
-    }
+  fn visit_mut_var_declarator(&mut self, decl: &mut VarDeclarator) {
+    decl.name.visit_mut_with(self);
 
-    fn visit_mut_fn_expr(&mut self, e: &mut FnExpr) {
-        self.push_scope(ScopeKind::Fn);
-
-        if let Some(ident) = &mut e.ident {
-            self.declare(ident, VarDeclKind::Var);
-        }
-        e.function.visit_mut_with(self);
-
-        self.pop_scope();
-    }
-
-    fn visit_mut_for_in_stmt(&mut self, n: &mut ForInStmt) {
-        self.push_scope(ScopeKind::Block);
-
-        n.left.visit_mut_with(self);
-        n.right.visit_mut_with(self);
-
-        self.visit_mut_stmt_within_child_scope(&mut *n.body);
-
-        self.pop_scope();
-    }
-
-    fn visit_mut_for_of_stmt(&mut self, n: &mut ForOfStmt) {
-        self.push_scope(ScopeKind::Block);
-
-        n.left.visit_mut_with(self);
-        n.right.visit_mut_with(self);
-
-        self.visit_mut_stmt_within_child_scope(&mut *n.body);
-        self.pop_scope();
-    }
-
-    fn visit_mut_for_stmt(&mut self, n: &mut ForStmt) {
-        self.push_scope(ScopeKind::Block);
-
-        n.init.visit_mut_with(self);
-        self.ident_type = IdentType::Ref;
-        n.test.visit_mut_with(self);
-        self.ident_type = IdentType::Ref;
-        n.update.visit_mut_with(self);
-
-        self.visit_mut_stmt_within_same_scope(&mut *n.body);
-
-        self.pop_scope();
-    }
-
-    fn visit_mut_function(&mut self, f: &mut Function) {
-        self.ident_type = IdentType::Ref;
-        f.decorators.visit_mut_with(self);
-
-        self.ident_type = IdentType::Binding(VarDeclKind::Var);
-        f.params.visit_mut_with(self);
-
-        self.ident_type = IdentType::Ref;
-        match &mut f.body {
-            Some(body) => {
-                // Prevent creating new scope.
-                body.visit_mut_children_with(self);
-            }
-            None => {}
-        }
-    }
-
-    fn visit_mut_ident(&mut self, i: &mut Ident) {
-        match self.ident_type {
-            IdentType::Binding(kind) => self.declare(i, kind),
-            IdentType::Ref => {
-                self.resolve_ctxt_for_ident(i);
-            }
-            // We currently does not touch labels
-            IdentType::Label => {}
-        }
-    }
-
-    fn visit_mut_import_named_specifier(&mut self, s: &mut ImportNamedSpecifier) {
-        let old = self.ident_type;
-        self.ident_type = IdentType::Binding(VarDeclKind::Const);
-        s.local.visit_mut_with(self);
-        self.ident_type = old;
-    }
-
-    /// Leftmost one of a member expression should be resolved.
-    fn visit_mut_member_expr(&mut self, e: &mut MemberExpr) {
-        e.obj.visit_mut_with(self);
-
-        if e.computed {
-            e.prop.visit_mut_with(self);
-        }
-    }
-
-    // TODO: How should I handle this?
-    // typed!(visit_mut_ts_namespace_export_decl, TsNamespaceExportDecl);
-
-    // track_ident_mut!();
-
-    fn visit_mut_method_prop(&mut self, m: &mut MethodProp) {
-        m.key.visit_mut_with(self);
-
-        {
-            self.push_scope(ScopeKind::Fn);
-
-            m.function.visit_mut_with(self);
-            self.pop_scope();
-        };
-    }
-
-    fn visit_mut_module_items(&mut self, stmts: &mut Vec<ModuleItem>) {
-        stmts.visit_mut_children_with(self);
-    }
-
-    fn visit_mut_object_lit(&mut self, o: &mut ObjectLit) {
-        self.push_scope(ScopeKind::Block);
-
-        o.visit_mut_children_with(self);
-
-        self.pop_scope();
-    }
-
-    fn visit_mut_param(&mut self, param: &mut Param) {
-        self.ident_type = IdentType::Binding(VarDeclKind::Var);
-        param.visit_mut_children_with(self);
-    }
-
-    fn visit_mut_pat(&mut self, p: &mut Pat) {
-        p.visit_mut_children_with(self);
-    }
-
-    fn visit_mut_private_method(&mut self, m: &mut PrivateMethod) {
-        m.key.visit_mut_with(self);
-
-        self.push_scope(ScopeKind::Fn);
-        m.function.visit_mut_with(self);
-        self.pop_scope();
-    }
-
-    // fn visit_mut_private_name(&mut self, _: &mut PrivateName) {}
-
-    fn visit_mut_setter_prop(&mut self, n: &mut SetterProp) {
-        n.key.visit_mut_with(self);
-
-        self.push_scope(ScopeKind::Fn);
-        self.ident_type = IdentType::Binding(VarDeclKind::Var);
-        n.param.visit_mut_with(self);
-        n.body.visit_mut_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_mut_stmts(&mut self, stmts: &mut Vec<Stmt>) {
-        stmts.visit_mut_children_with(self)
-    }
-
-    fn visit_mut_var_decl(&mut self, decl: &mut VarDecl) {
-        let ident_type = self.ident_type;
-        self.ident_type = IdentType::Binding(decl.kind.clone());
-        decl.decls.visit_mut_with(self);
-        self.ident_type = ident_type;
-    }
-
-    fn visit_mut_var_declarator(&mut self, decl: &mut VarDeclarator) {
-        decl.name.visit_mut_with(self);
-
-        let old_type = self.ident_type;
-        self.ident_type = IdentType::Ref;
-        decl.init.visit_mut_children_with(self);
-        self.ident_type = old_type;
-    }
+    let old_type = self.ident_type;
+    self.ident_type = IdentType::Ref;
+    decl.init.visit_mut_children_with(self);
+    self.ident_type = old_type;
+  }
 }
 
 // TODO: handle `var foo = 1`
 pub struct Hoister<'me> {
-    scanner: &'me mut Scanner,
-    ident_type: Option<IdentType>,
-    /// Hoister should not touch let / const in the block.
-    in_block: bool,
-    catch_param_decls: HashSet<JsWord>,
+  scanner: &'me mut Scanner,
+  ident_type: Option<IdentType>,
+  /// Hoister should not touch let / const in the block.
+  in_block: bool,
+  catch_param_decls: HashSet<JsWord>,
 }
 
 impl<'me> Hoister<'me> {
-    pub fn new(scanner: &'me mut Scanner) -> Self {
-        Self {
-            scanner,
-            ident_type: None,
-            in_block: false,
-            catch_param_decls: Default::default(),
-        }
+  pub fn new(scanner: &'me mut Scanner) -> Self {
+    Self {
+      scanner,
+      ident_type: None,
+      in_block: false,
+      catch_param_decls: Default::default(),
     }
+  }
 }
 
 impl<'me> VisitMut for Hoister<'me> {
-    noop_visit_mut_type!();
+  noop_visit_mut_type!();
 
-    // const foo = () => {}
-    #[inline]
-    fn visit_mut_arrow_expr(&mut self, _: &mut ArrowExpr) {}
+  // const foo = () => {}
+  #[inline]
+  fn visit_mut_arrow_expr(&mut self, _: &mut ArrowExpr) {}
 
-    #[inline]
-    fn visit_mut_expr(&mut self, _: &mut Expr) {}
+  #[inline]
+  fn visit_mut_expr(&mut self, _: &mut Expr) {}
 
-    // new Foo()
-    #[inline]
-    fn visit_mut_constructor(&mut self, _: &mut Constructor) {}
+  // new Foo()
+  #[inline]
+  fn visit_mut_constructor(&mut self, _: &mut Constructor) {}
 
-    // function foo() {}
-    #[inline]
-    fn visit_mut_function(&mut self, _: &mut Function) {}
+  // function foo() {}
+  #[inline]
+  fn visit_mut_function(&mut self, _: &mut Function) {}
 
-    #[inline]
-    fn visit_mut_param(&mut self, _: &mut Param) {}
+  #[inline]
+  fn visit_mut_param(&mut self, _: &mut Param) {}
 
-    #[inline]
-    fn visit_mut_pat_or_expr(&mut self, _: &mut PatOrExpr) {}
+  #[inline]
+  fn visit_mut_pat_or_expr(&mut self, _: &mut PatOrExpr) {}
 
-    // { get foo() {} }
-    #[inline]
-    fn visit_mut_setter_prop(&mut self, _: &mut SetterProp) {}
+  // { get foo() {} }
+  #[inline]
+  fn visit_mut_setter_prop(&mut self, _: &mut SetterProp) {}
 
-    #[inline]
-    fn visit_mut_tagged_tpl(&mut self, _: &mut TaggedTpl) {}
+  #[inline]
+  fn visit_mut_tagged_tpl(&mut self, _: &mut TaggedTpl) {}
 
-    #[inline]
-    fn visit_mut_tpl(&mut self, _: &mut Tpl) {}
+  #[inline]
+  fn visit_mut_tpl(&mut self, _: &mut Tpl) {}
 
-    fn visit_mut_import_decl(&mut self, n: &mut ImportDecl) {
-        let prev = self.ident_type;
-        self.ident_type = Some(IdentType::Binding(VarDeclKind::Const));
-        n.visit_mut_children_with(self);
-        self.ident_type = prev;
+  fn visit_mut_import_decl(&mut self, n: &mut ImportDecl) {
+    let prev = self.ident_type;
+    self.ident_type = Some(IdentType::Binding(VarDeclKind::Const));
+    n.visit_mut_children_with(self);
+    self.ident_type = prev;
+  }
+
+  fn visit_mut_import_named_specifier(&mut self, s: &mut ImportNamedSpecifier) {
+    // let old = self.ident_type;
+    // self.ident_type = IdentType::Binding(VarDeclKind::Const);
+    // For `import { foo as foo2 }`, We only need to mark `foo2`.
+    s.local.visit_mut_with(self);
+    // self.ident_type = old;
+  }
+
+  fn visit_mut_ident(&mut self, i: &mut Ident) {
+    if let Some(ident_type) = &self.ident_type {
+      match ident_type {
+        IdentType::Binding(kind) => self.scanner.declare(i, kind.clone()),
+        // We only bind symbol in Hoister
+        _ => {}
+      }
     }
+  }
 
-    fn visit_mut_import_named_specifier(&mut self, s: &mut ImportNamedSpecifier) {
-        // let old = self.ident_type;
-        // self.ident_type = IdentType::Binding(VarDeclKind::Const);
-        // For `import { foo as foo2 }`, We only need to mark `foo2`.
-        s.local.visit_mut_with(self);
-        // self.ident_type = old;
+  // function foo() {};
+  fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
+    if self.catch_param_decls.contains(&node.ident.sym) {
+      return;
     }
+    self.scanner.declare(&mut node.ident, VarDeclKind::Var);
+  }
 
-    fn visit_mut_ident(&mut self, i: &mut Ident) {
-        if let Some(ident_type) = &self.ident_type {
-            match ident_type {
-                IdentType::Binding(kind) => self.scanner.declare(i, kind.clone()),
-                // We only bind symbol in Hoister
-                _ => {}
-            }
-        }
-    }
+  // fn visit_mut_assign_pat_prop(&mut self, node: &mut AssignPatProp) {
+  //     // node.visit_mut_children_with(self);
 
-    // function foo() {};
-    fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
-        if self.catch_param_decls.contains(&node.ident.sym) {
-            return;
-        }
-        self.scanner.declare(&mut node.ident, VarDeclKind::Var);
-    }
+  //     // {
+  //     //     if self.catch_param_decls.contains(&node.key.sym) {
+  //     //         return;
+  //     //     }
 
-    // fn visit_mut_assign_pat_prop(&mut self, node: &mut AssignPatProp) {
-    //     // node.visit_mut_children_with(self);
+  //     //     self.resolver.modify(&mut node.key, self.kind)
+  //     // }
+  // }
 
-    //     // {
-    //     //     if self.catch_param_decls.contains(&node.key.sym) {
-    //     //         return;
-    //     //     }
+  // fn visit_mut_block_stmt(&mut self, n: &mut BlockStmt) {
+  //     let old_in_block = self.in_block;
+  //     self.in_block = true;
+  //     n.visit_mut_children_with(self);
+  //     self.in_block = old_in_block;
+  // }
 
-    //     //     self.resolver.modify(&mut node.key, self.kind)
-    //     // }
-    // }
+  // #[inline]
+  // fn visit_mut_catch_clause(&mut self, c: &mut CatchClause) {
+  //     // let params: Vec<Id> = find_ids(&c.param);
 
-    // fn visit_mut_block_stmt(&mut self, n: &mut BlockStmt) {
-    //     let old_in_block = self.in_block;
-    //     self.in_block = true;
-    //     n.visit_mut_children_with(self);
-    //     self.in_block = old_in_block;
-    // }
+  //     // let orig = self.catch_param_decls.clone();
 
-    // #[inline]
-    // fn visit_mut_catch_clause(&mut self, c: &mut CatchClause) {
-    //     // let params: Vec<Id> = find_ids(&c.param);
+  //     // self.catch_param_decls
+  //     //     .extend(params.into_iter().map(|v| v.0));
+  //     c.body.visit_mut_with(self);
 
-    //     // let orig = self.catch_param_decls.clone();
+  //     // self.catch_param_decls = orig;
+  // }
 
-    //     // self.catch_param_decls
-    //     //     .extend(params.into_iter().map(|v| v.0));
-    //     c.body.visit_mut_with(self);
+  // fn visit_mut_class_decl(&mut self, node: &mut ClassDecl) {
+  //     if self.in_block {
+  //         return;
+  //     }
+  //     // self.resolver.in_type = false;
+  //     // self.resolver
+  //     //     .modify(&mut node.ident, Some(VarDeclKind::Let));
+  // }
 
-    //     // self.catch_param_decls = orig;
-    // }
+  // fn visit_mut_export_default_decl(&mut self, node: &mut ExportDefaultDecl) {
+  //     // Treat default exported functions and classes as declarations
+  //     // even though they are parsed as expressions.
+  //     match &mut node.decl {
+  //         DefaultDecl::Fn(f) => {
+  //             if let Some(id) = &mut f.ident {
+  //                 self.resolver.in_type = false;
+  //                 self.resolver.modify(id, Some(VarDeclKind::Var));
+  //             }
 
-    // fn visit_mut_class_decl(&mut self, node: &mut ClassDecl) {
-    //     if self.in_block {
-    //         return;
-    //     }
-    //     // self.resolver.in_type = false;
-    //     // self.resolver
-    //     //     .modify(&mut node.ident, Some(VarDeclKind::Let));
-    // }
+  //             f.visit_mut_with(self)
+  //         }
+  //         DefaultDecl::Class(c) => {
+  //             // if let Some(id) = &mut c.ident {
+  //             //     self.resolver.in_type = false;
+  //             //     self.resolver.modify(id, Some(VarDeclKind::Let));
+  //             // }
 
-    // fn visit_mut_export_default_decl(&mut self, node: &mut ExportDefaultDecl) {
-    //     // Treat default exported functions and classes as declarations
-    //     // even though they are parsed as expressions.
-    //     match &mut node.decl {
-    //         DefaultDecl::Fn(f) => {
-    //             if let Some(id) = &mut f.ident {
-    //                 self.resolver.in_type = false;
-    //                 self.resolver.modify(id, Some(VarDeclKind::Var));
-    //             }
+  //             c.visit_mut_with(self)
+  //         }
+  //         _ => {
+  //             node.visit_mut_children_with(self);
+  //         }
+  //     }
+  // }
 
-    //             f.visit_mut_with(self)
-    //         }
-    //         DefaultDecl::Class(c) => {
-    //             // if let Some(id) = &mut c.ident {
-    //             //     self.resolver.in_type = false;
-    //             //     self.resolver.modify(id, Some(VarDeclKind::Let));
-    //             // }
+  // fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
+  //     if self.catch_param_decls.contains(&node.ident.sym) {
+  //         return;
+  //     }
 
-    //             c.visit_mut_with(self)
-    //         }
-    //         _ => {
-    //             node.visit_mut_children_with(self);
-    //         }
-    //     }
-    // }
+  //     self.resolver.in_type = false;
+  //     self.resolver
+  //         .modify(&mut node.ident, Some(VarDeclKind::Var));
+  // }
 
-    // fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
-    //     if self.catch_param_decls.contains(&node.ident.sym) {
-    //         return;
-    //     }
+  // fn visit_mut_pat(&mut self, node: &mut Pat) {
+  //     self.resolver.in_type = false;
+  //     match node {
+  //         Pat::Ident(i) => {
+  //             if self.catch_param_decls.contains(&i.id.sym) {
+  //                 return;
+  //             }
 
-    //     self.resolver.in_type = false;
-    //     self.resolver
-    //         .modify(&mut node.ident, Some(VarDeclKind::Var));
-    // }
+  //             self.resolver.modify(&mut i.id, self.kind)
+  //         }
 
-    // fn visit_mut_pat(&mut self, node: &mut Pat) {
-    //     self.resolver.in_type = false;
-    //     match node {
-    //         Pat::Ident(i) => {
-    //             if self.catch_param_decls.contains(&i.id.sym) {
-    //                 return;
-    //             }
+  //         _ => node.visit_mut_children_with(self),
+  //     }
+  // }
 
-    //             self.resolver.modify(&mut i.id, self.kind)
-    //         }
+  // fn visit_mut_var_decl(&mut self, node: &mut VarDecl) {
+  //     if self.in_block {
+  //         match node.kind {
+  //             VarDeclKind::Const | VarDeclKind::Let => return,
+  //             _ => {}
+  //         }
+  //     }
 
-    //         _ => node.visit_mut_children_with(self),
-    //     }
-    // }
+  //     let old_kind = self.kind;
+  //     self.kind = Some(node.kind);
 
-    // fn visit_mut_var_decl(&mut self, node: &mut VarDecl) {
-    //     if self.in_block {
-    //         match node.kind {
-    //             VarDeclKind::Const | VarDeclKind::Let => return,
-    //             _ => {}
-    //         }
-    //     }
+  //     self.resolver.hoist = false;
 
-    //     let old_kind = self.kind;
-    //     self.kind = Some(node.kind);
+  //     node.visit_mut_children_with(self);
 
-    //     self.resolver.hoist = false;
+  //     self.kind = old_kind;
+  // }
 
-    //     node.visit_mut_children_with(self);
+  // fn visit_mut_var_decl_or_expr(&mut self, n: &mut VarDeclOrExpr) {
+  //     match n {
+  //         VarDeclOrExpr::VarDecl(VarDecl {
+  //             kind: VarDeclKind::Let,
+  //             ..
+  //         })
+  //         | VarDeclOrExpr::VarDecl(VarDecl {
+  //             kind: VarDeclKind::Const,
+  //             ..
+  //         }) => {}
+  //         _ => {
+  //             n.visit_mut_children_with(self);
+  //         }
+  //     }
+  // }
 
-    //     self.kind = old_kind;
-    // }
+  // fn visit_mut_var_decl_or_pat(&mut self, n: &mut VarDeclOrPat) {
+  //     match n {
+  //         VarDeclOrPat::VarDecl(VarDecl {
+  //             kind: VarDeclKind::Let,
+  //             ..
+  //         })
+  //         | VarDeclOrPat::VarDecl(VarDecl {
+  //             kind: VarDeclKind::Const,
+  //             ..
+  //         }) => {}
+  //         // Hoister should not handle lhs of for in statement below
+  //         //
+  //         // const b = [];
+  //         // {
+  //         //   let a;
+  //         //   for (a in b) {
+  //         //     console.log(a);
+  //         //   }
+  //         // }
+  //         VarDeclOrPat::Pat(..) => {}
+  //         _ => {
+  //             n.visit_mut_children_with(self);
+  //         }
+  //     }
+  // }
 
-    // fn visit_mut_var_decl_or_expr(&mut self, n: &mut VarDeclOrExpr) {
-    //     match n {
-    //         VarDeclOrExpr::VarDecl(VarDecl {
-    //             kind: VarDeclKind::Let,
-    //             ..
-    //         })
-    //         | VarDeclOrExpr::VarDecl(VarDecl {
-    //             kind: VarDeclKind::Const,
-    //             ..
-    //         }) => {}
-    //         _ => {
-    //             n.visit_mut_children_with(self);
-    //         }
-    //     }
-    // }
-
-    // fn visit_mut_var_decl_or_pat(&mut self, n: &mut VarDeclOrPat) {
-    //     match n {
-    //         VarDeclOrPat::VarDecl(VarDecl {
-    //             kind: VarDeclKind::Let,
-    //             ..
-    //         })
-    //         | VarDeclOrPat::VarDecl(VarDecl {
-    //             kind: VarDeclKind::Const,
-    //             ..
-    //         }) => {}
-    //         // Hoister should not handle lhs of for in statement below
-    //         //
-    //         // const b = [];
-    //         // {
-    //         //   let a;
-    //         //   for (a in b) {
-    //         //     console.log(a);
-    //         //   }
-    //         // }
-    //         VarDeclOrPat::Pat(..) => {}
-    //         _ => {
-    //             n.visit_mut_children_with(self);
-    //         }
-    //     }
-    // }
-
-    // #[inline]
-    // fn visit_mut_var_declarator(&mut self, node: &mut VarDeclarator) {
-    //     node.name.visit_mut_with(self);
-    // }
+  // #[inline]
+  // fn visit_mut_var_declarator(&mut self, node: &mut VarDeclarator) {
+  //     node.name.visit_mut_with(self);
+  // }
 }

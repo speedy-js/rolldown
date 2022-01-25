@@ -6,14 +6,14 @@ pub mod graph;
 pub mod module;
 pub mod scanner;
 // pub mod statement;
+pub mod renamer;
 pub mod types;
 pub mod utils;
 pub mod worker;
-pub mod renamer;
 
 pub use swc_ecma_ast as ast;
 
 // refactor
-pub mod plugin_driver;
 pub mod ext;
+pub mod plugin_driver;
 pub mod symbol_box;

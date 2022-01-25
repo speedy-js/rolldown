@@ -1,12 +1,10 @@
-
 use std::path::Path;
 
 use swc_atoms::JsWord;
 use swc_ecma_ast::{
-  BindingIdent, ClassDecl, Decl, DefaultDecl, EmptyStmt, EsVersion,
-  Expr, FnDecl, Ident, ModuleDecl, ModuleItem, Pat, Stmt, VarDecl, VarDeclarator,
+  BindingIdent, ClassDecl, Decl, DefaultDecl, EmptyStmt, EsVersion, Expr, FnDecl, Ident,
+  ModuleDecl, ModuleItem, Pat, Stmt, VarDecl, VarDeclarator,
 };
-
 
 use swc_common::sync::Lrc;
 use swc_common::{
