@@ -87,7 +87,7 @@ impl GraphContainer {
 
     // build dependency graph via entry modules.
     fn generate_module_graph(&mut self) {
-        let nums_of_thread = num_cpus::get();
+        let nums_of_thread = num_cpus::get_physical();
         let idle_thread_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(nums_of_thread));
         let job_queue: Arc<SegQueue<ResolvedId>> = Default::default();
         let entry_id = resolve_id(
@@ -139,7 +139,7 @@ impl GraphContainer {
             || !rx.is_empty()
         {
             // println!("active_count {}", active_count.load(Ordering::SeqCst));
-            if let Ok(job) = rx.recv() {
+            if let Ok(job) = rx.try_recv() {
                 match job {
                     Msg::NewMod(module) => {
                         self.id_to_module.insert(module.id.clone(), module);
