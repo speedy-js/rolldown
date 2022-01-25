@@ -1,7 +1,10 @@
 use crate::ast;
+use crate::plugin_driver::PluginDriver;
 use crate::symbol_box::SymbolBox;
+use crate::utils::resolve_id;
 use std::collections::HashMap;
 
+use std::sync::Mutex;
 use std::{collections::HashSet, hash::Hash};
 
 use ast::{ModuleDecl, ModuleItem};
@@ -63,6 +66,7 @@ impl Module {
       };
       if name == "default" {
         // This means that the module's `export default` is a value. No name to bind.
+        // And we need to generate a name for it lately.
         return;
       }
       if let Some(delcared_name_mark) = self.delcared.get(name) {
@@ -82,6 +86,20 @@ impl Module {
 
   pub fn suggest_name(&mut self, name: JsWord, suggested: JsWord) {
     self.suggested_names.insert(name, suggested);
+  }
+
+  pub fn resolve_id(
+    &mut self,
+    dep_src: &JsWord,
+    plugin_driver: &Mutex<PluginDriver>,
+  ) -> ResolvedId {
+    self
+      .resolved_ids
+      .entry(dep_src.clone())
+      .or_insert_with_key(|key| {
+        resolve_id(key, Some(&self.id), false, &plugin_driver.lock().unwrap())
+      })
+      .clone()
   }
 }
 

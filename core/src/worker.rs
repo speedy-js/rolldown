@@ -13,7 +13,7 @@ use crate::{
   scanner::Scanner,
   symbol_box::SymbolBox,
   types::ResolvedId,
-  utils::{load, parse_file, resolve_id},
+  utils::{load, parse_file},
 };
 
 pub struct Worker {
@@ -45,18 +45,13 @@ impl Worker {
         let mut module = Module::new(resolved_id.id.clone());
         let source = load(&resolved_id.id, &self.plugin_driver.lock().unwrap());
         let mut ast = parse_file(source, &module.id, &SOURCE_MAP).unwrap();
-        self.pre_analyze_imported_module(&module.id, &ast);
+        self.pre_analyze_imported_module(&mut module, &ast);
 
         let mut scanner = Scanner::new(self.symbol_box.clone(), self.tx.clone());
         ast.visit_mut_with(&mut scanner);
 
         scanner.import_infos.iter().for_each(|(imported, info)| {
-          let resolved_id = resolve_id(
-            imported,
-            Some(&module.id),
-            false,
-            &self.plugin_driver.lock().unwrap(),
-          );
+          let resolved_id = module.resolve_id(imported, &self.plugin_driver);
           self
             .tx
             .send(Msg::DependencyReference(
@@ -70,12 +65,7 @@ impl Worker {
           .re_export_infos
           .iter()
           .for_each(|(re_exported, info)| {
-            let resolved_id = resolve_id(
-              re_exported,
-              Some(&module.id),
-              false,
-              &self.plugin_driver.lock().unwrap(),
-            );
+            let resolved_id = module.resolve_id(re_exported, &self.plugin_driver);
             self
               .tx
               .send(Msg::DependencyReference(
@@ -86,12 +76,7 @@ impl Worker {
               .unwrap();
           });
         scanner.export_all_sources.iter().for_each(|re_exported| {
-          let resolved_id = resolve_id(
-            re_exported,
-            Some(&module.id),
-            false,
-            &self.plugin_driver.lock().unwrap(),
-          );
+          let resolved_id = module.resolve_id(re_exported, &self.plugin_driver);
           self
             .tx
             .send(Msg::DependencyReference(
@@ -108,13 +93,13 @@ impl Worker {
         module.delcared = scanner.stacks.into_iter().next().unwrap().declared_symbols;
         module.ast = ast;
 
-        println!("before link_exports module {:#?}", module);
+        log::debug!("before link_exports module {:#?}", module);
 
         module.bind_local_references(&mut self.symbol_box.lock().unwrap());
 
         module.link_local_exports();
 
-        println!("module {:#?}", module);
+        log::debug!("module {:#?}", module);
         self.tx.send(Msg::NewMod(module)).unwrap();
       }
     }
@@ -122,31 +107,26 @@ impl Worker {
 
   // Fast path for analyzing static import and export.
   #[inline]
-  pub fn pre_analyze_imported_module(&self, module_id: &str, ast: &swc_ecma_ast::Module) {
+  pub fn pre_analyze_imported_module(&self, module: &mut Module, ast: &swc_ecma_ast::Module) {
     ast.body.iter().for_each(|module_item| {
       if let ModuleItem::ModuleDecl(module_decl) = module_item {
-        let mut imported = None;
+        let mut depended = None;
         match module_decl {
           ModuleDecl::Import(import_decl) => {
-            imported = Some(&import_decl.src.value);
+            depended = Some(&import_decl.src.value);
           }
           ModuleDecl::ExportNamed(node) => {
             if let Some(source_node) = &node.src {
-              imported = Some(&source_node.value);
+              depended = Some(&source_node.value);
             }
           }
           ModuleDecl::ExportAll(node) => {
-            imported = Some(&node.src.value);
+            depended = Some(&node.src.value);
           }
           _ => {}
         }
-        if let Some(imported) = imported {
-          let resolved_id = resolve_id(
-            imported,
-            Some(module_id),
-            false,
-            &self.plugin_driver.lock().unwrap(),
-          );
+        if let Some(depended) = depended {
+          let resolved_id = module.resolve_id(depended, &self.plugin_driver);
           self.job_queue.push(resolved_id);
         }
       }
