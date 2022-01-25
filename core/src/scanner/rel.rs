@@ -12,6 +12,7 @@ use super::{helper::collect_js_word_of_pat, Scanner};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct ExportDesc {
+    // export foo; foo is identifier;
     pub identifier: Option<JsWord>,
     pub local_name: JsWord,
     pub mark: Mark,
