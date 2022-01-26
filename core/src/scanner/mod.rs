@@ -10,7 +10,7 @@ use swc_ecma_ast::{
   ClassMethod, ClassProp, Constructor, Decl, DefaultDecl, ExportDefaultDecl, Expr, FnDecl, FnExpr,
   ForInStmt, ForOfStmt, ForStmt, Function, Ident, ImportDecl, ImportNamedSpecifier, MemberExpr,
   MethodProp, ModuleDecl, ModuleItem, ObjectLit, Param, Pat, PatOrExpr, PrivateMethod, SetterProp,
-  Stmt, TaggedTpl, Tpl, VarDecl, VarDeclKind, VarDeclarator,
+  Stmt, TaggedTpl, Tpl, VarDecl, VarDeclarator,
 };
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
@@ -18,7 +18,7 @@ use crate::{ext::MarkExt, graph::Msg, symbol_box::SymbolBox};
 
 use self::{
   rel::ReExportInfo,
-  scope::{Scope, ScopeKind},
+  scope::{BindType, Scope, ScopeKind},
 };
 
 mod helper;
@@ -69,19 +69,16 @@ impl Scanner {
     }
   }
 
-  pub fn declare(&mut self, id: &mut Ident, kind: VarDeclKind) {
-    let is_var_decl = match kind {
-      VarDeclKind::Let => false,
-      VarDeclKind::Const => false,
-      VarDeclKind::Var => true,
-    };
+  pub fn declare(&mut self, id: &mut Ident, kind: BindType) {
+    let is_var_decl = matches!(kind, BindType::Var);
 
     debug!(
       "declare {} {}",
       match kind {
-        VarDeclKind::Let => "let",
-        VarDeclKind::Const => "const",
-        VarDeclKind::Var => "var",
+        BindType::Let => "let",
+        BindType::Const => "const",
+        BindType::Var => "var",
+        BindType::Import => "import",
       },
       id.sym.to_string()
     );
@@ -104,13 +101,18 @@ impl Scanner {
           // Valid
           // var a; var a;
           assert!(
-            declared_kind == &VarDeclKind::Var && is_var_decl,
+            declared_kind == &BindType::Var && is_var_decl,
             " duplicate name {}",
             name
           );
         }
         let mark = self.symbol_box.lock().unwrap().new_mark();
-        log::debug!("[scanner]: new mark {:?} for `{}` is_root_scope: {:#}", mark, id.sym.to_string(), idx == 0);
+        log::debug!(
+          "[scanner]: new mark {:?} for `{}` is_root_scope: {:#}",
+          mark,
+          id.sym.to_string(),
+          idx == 0
+        );
         scope
           .declared_symbols_kind
           .insert(id.sym.clone().clone(), kind);
@@ -148,7 +150,7 @@ impl Scanner {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdentType {
-  Binding(VarDeclKind),
+  Binding(BindType),
   Ref,
   Label,
 }
@@ -178,7 +180,7 @@ impl VisitMut for Scanner {
   #[inline]
   fn visit_mut_import_decl(&mut self, _: &mut ImportDecl) {
     // We alreay done this in Hoister
-    // self.ident_type = IdentType::Binding(VarDeclKind::Const);
+    // self.ident_type = IdentType::Binding(BindType::Const);
     // n.visit_mut_children_with(self);
   }
 
@@ -188,7 +190,7 @@ impl VisitMut for Scanner {
     self.push_scope(ScopeKind::Fn);
 
     let old = self.ident_type;
-    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    self.ident_type = IdentType::Binding(BindType::Var);
     e.params.visit_mut_with(self);
     self.ident_type = old;
     match &mut e.body {
@@ -224,7 +226,7 @@ impl VisitMut for Scanner {
   fn visit_mut_catch_clause(&mut self, c: &mut CatchClause) {
     self.push_scope(ScopeKind::Block);
 
-    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    self.ident_type = IdentType::Binding(BindType::Var);
     c.param.visit_mut_with(self);
     self.ident_type = IdentType::Ref;
 
@@ -233,7 +235,7 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_class_decl(&mut self, n: &mut ClassDecl) {
-    self.declare(&mut n.ident, VarDeclKind::Let);
+    self.declare(&mut n.ident, BindType::Let);
 
     self.push_scope(ScopeKind::Fn);
 
@@ -247,7 +249,7 @@ impl VisitMut for Scanner {
   fn visit_mut_class_expr(&mut self, n: &mut ClassExpr) {
     self.push_scope(ScopeKind::Fn);
 
-    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    self.ident_type = IdentType::Binding(BindType::Var);
     n.ident.visit_mut_with(self);
     self.ident_type = IdentType::Ref;
 
@@ -271,7 +273,7 @@ impl VisitMut for Scanner {
 
     if p.computed {
       let old = self.ident_type;
-      self.ident_type = IdentType::Binding(VarDeclKind::Var);
+      self.ident_type = IdentType::Binding(BindType::Var);
       p.key.visit_mut_with(self);
       self.ident_type = old;
     }
@@ -288,7 +290,7 @@ impl VisitMut for Scanner {
     self.push_scope(ScopeKind::Fn);
 
     let old = self.ident_type;
-    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    self.ident_type = IdentType::Binding(BindType::Var);
     c.params.visit_mut_with(self);
     self.ident_type = old;
 
@@ -346,7 +348,7 @@ impl VisitMut for Scanner {
     self.push_scope(ScopeKind::Fn);
 
     if let Some(ident) = &mut e.ident {
-      self.declare(ident, VarDeclKind::Var);
+      self.declare(ident, BindType::Var);
     }
     e.function.visit_mut_with(self);
 
@@ -392,7 +394,7 @@ impl VisitMut for Scanner {
     self.ident_type = IdentType::Ref;
     f.decorators.visit_mut_with(self);
 
-    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    self.ident_type = IdentType::Binding(BindType::Var);
     f.params.visit_mut_with(self);
 
     self.ident_type = IdentType::Ref;
@@ -418,7 +420,7 @@ impl VisitMut for Scanner {
 
   fn visit_mut_import_named_specifier(&mut self, s: &mut ImportNamedSpecifier) {
     let old = self.ident_type;
-    self.ident_type = IdentType::Binding(VarDeclKind::Const);
+    self.ident_type = IdentType::Binding(BindType::Const);
     s.local.visit_mut_with(self);
     self.ident_type = old;
   }
@@ -461,7 +463,7 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_param(&mut self, param: &mut Param) {
-    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    self.ident_type = IdentType::Binding(BindType::Var);
     param.visit_mut_children_with(self);
   }
 
@@ -483,7 +485,7 @@ impl VisitMut for Scanner {
     n.key.visit_mut_with(self);
 
     self.push_scope(ScopeKind::Fn);
-    self.ident_type = IdentType::Binding(VarDeclKind::Var);
+    self.ident_type = IdentType::Binding(BindType::Var);
     n.param.visit_mut_with(self);
     n.body.visit_mut_with(self);
     self.pop_scope();
@@ -495,7 +497,7 @@ impl VisitMut for Scanner {
 
   fn visit_mut_var_decl(&mut self, decl: &mut VarDecl) {
     let ident_type = self.ident_type;
-    self.ident_type = IdentType::Binding(decl.kind.clone());
+    self.ident_type = IdentType::Binding(decl.kind.into());
     decl.decls.visit_mut_with(self);
     self.ident_type = ident_type;
   }
@@ -566,14 +568,14 @@ impl<'me> VisitMut for Hoister<'me> {
 
   fn visit_mut_import_decl(&mut self, n: &mut ImportDecl) {
     let prev = self.ident_type;
-    self.ident_type = Some(IdentType::Binding(VarDeclKind::Const));
+    self.ident_type = Some(IdentType::Binding(BindType::Import));
     n.visit_mut_children_with(self);
     self.ident_type = prev;
   }
 
   fn visit_mut_import_named_specifier(&mut self, s: &mut ImportNamedSpecifier) {
     // let old = self.ident_type;
-    // self.ident_type = IdentType::Binding(VarDeclKind::Const);
+    // self.ident_type = IdentType::Binding(BindType::Const);
     // For `import { foo as foo2 }`, We only need to mark `foo2`.
     s.local.visit_mut_with(self);
     // self.ident_type = old;
@@ -594,7 +596,7 @@ impl<'me> VisitMut for Hoister<'me> {
     if self.catch_param_decls.contains(&node.ident.sym) {
       return;
     }
-    self.scanner.declare(&mut node.ident, VarDeclKind::Var);
+    self.scanner.declare(&mut node.ident, BindType::Var);
   }
 
   // fn visit_mut_assign_pat_prop(&mut self, node: &mut AssignPatProp) {
@@ -635,7 +637,7 @@ impl<'me> VisitMut for Hoister<'me> {
   //     }
   //     // self.resolver.in_type = false;
   //     // self.resolver
-  //     //     .modify(&mut node.ident, Some(VarDeclKind::Let));
+  //     //     .modify(&mut node.ident, Some(BindType::Let));
   // }
 
   // fn visit_mut_export_default_decl(&mut self, node: &mut ExportDefaultDecl) {
@@ -645,7 +647,7 @@ impl<'me> VisitMut for Hoister<'me> {
   //         DefaultDecl::Fn(f) => {
   //             if let Some(id) = &mut f.ident {
   //                 self.resolver.in_type = false;
-  //                 self.resolver.modify(id, Some(VarDeclKind::Var));
+  //                 self.resolver.modify(id, Some(BindType::Var));
   //             }
 
   //             f.visit_mut_with(self)
@@ -653,7 +655,7 @@ impl<'me> VisitMut for Hoister<'me> {
   //         DefaultDecl::Class(c) => {
   //             // if let Some(id) = &mut c.ident {
   //             //     self.resolver.in_type = false;
-  //             //     self.resolver.modify(id, Some(VarDeclKind::Let));
+  //             //     self.resolver.modify(id, Some(BindType::Let));
   //             // }
 
   //             c.visit_mut_with(self)
@@ -671,7 +673,7 @@ impl<'me> VisitMut for Hoister<'me> {
 
   //     self.resolver.in_type = false;
   //     self.resolver
-  //         .modify(&mut node.ident, Some(VarDeclKind::Var));
+  //         .modify(&mut node.ident, Some(BindType::Var));
   // }
 
   // fn visit_mut_pat(&mut self, node: &mut Pat) {
@@ -692,7 +694,7 @@ impl<'me> VisitMut for Hoister<'me> {
   // fn visit_mut_var_decl(&mut self, node: &mut VarDecl) {
   //     if self.in_block {
   //         match node.kind {
-  //             VarDeclKind::Const | VarDeclKind::Let => return,
+  //             BindType::Const | BindType::Let => return,
   //             _ => {}
   //         }
   //     }
@@ -710,11 +712,11 @@ impl<'me> VisitMut for Hoister<'me> {
   // fn visit_mut_var_decl_or_expr(&mut self, n: &mut VarDeclOrExpr) {
   //     match n {
   //         VarDeclOrExpr::VarDecl(VarDecl {
-  //             kind: VarDeclKind::Let,
+  //             kind: BindType::Let,
   //             ..
   //         })
   //         | VarDeclOrExpr::VarDecl(VarDecl {
-  //             kind: VarDeclKind::Const,
+  //             kind: BindType::Const,
   //             ..
   //         }) => {}
   //         _ => {
@@ -726,11 +728,11 @@ impl<'me> VisitMut for Hoister<'me> {
   // fn visit_mut_var_decl_or_pat(&mut self, n: &mut VarDeclOrPat) {
   //     match n {
   //         VarDeclOrPat::VarDecl(VarDecl {
-  //             kind: VarDeclKind::Let,
+  //             kind: BindType::Let,
   //             ..
   //         })
   //         | VarDeclOrPat::VarDecl(VarDecl {
-  //             kind: VarDeclKind::Const,
+  //             kind: BindType::Const,
   //             ..
   //         }) => {}
   //         // Hoister should not handle lhs of for in statement below

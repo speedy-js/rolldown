@@ -41,7 +41,7 @@ pub struct Scope {
   // pub depth: usize,
   pub kind: ScopeKind,
   pub declared_symbols: HashMap<JsWord, Mark>,
-  pub declared_symbols_kind: HashMap<JsWord, VarDeclKind>,
+  pub declared_symbols_kind: HashMap<JsWord, BindType>,
 }
 
 impl Scope {
@@ -51,6 +51,24 @@ impl Scope {
       kind,
       declared_symbols: Default::default(),
       declared_symbols_kind: Default::default(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindType {
+  Var,
+  Let,
+  Const,
+  Import,
+}
+
+impl From<VarDeclKind> for BindType {
+  fn from(var_decl_kind: VarDeclKind) -> Self {
+    match var_decl_kind {
+      VarDeclKind::Const => Self::Const,
+      VarDeclKind::Let => Self::Let,
+      VarDeclKind::Var => Self::Let,
     }
   }
 }

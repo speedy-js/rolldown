@@ -10,7 +10,7 @@ use crate::{
   graph::{Msg, Rel, SOURCE_MAP},
   module::Module,
   plugin_driver::PluginDriver,
-  scanner::Scanner,
+  scanner::{scope::BindType, Scanner},
   symbol_box::SymbolBox,
   types::ResolvedId,
   utils::{load, parse_file},
@@ -90,7 +90,21 @@ impl Worker {
         module.local_exports = scanner.local_exports;
         module.re_exports = scanner.re_exports;
         module.re_export_all_sources = scanner.export_all_sources;
-        module.declared = scanner.stacks.into_iter().next().unwrap().declared_symbols;
+        // module.declared =
+        {
+          let root_scope = scanner.stacks.into_iter().next().unwrap();
+          let declared_symbols = root_scope.declared_symbols;
+          let mut declared_symbols_kind = root_scope.declared_symbols_kind;
+          declared_symbols.into_iter().for_each(|(name, mark)| {
+            let bind_type = declared_symbols_kind.remove(&name).unwrap();
+            if BindType::Import == bind_type {
+              module.imported_symbols.insert(name, mark);
+            } else {
+              module.declared_symbols.insert(name, mark);
+            }
+          });
+        }
+
         module.ast = ast;
 
         module.bind_local_references(&mut self.symbol_box.lock().unwrap());

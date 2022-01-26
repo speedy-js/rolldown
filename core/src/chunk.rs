@@ -48,14 +48,15 @@ impl Chunk {
     let mut used_names = HashSet::new();
     let mut mark_to_name = HashMap::new();
     modules.values().for_each(|module| {
-      module.declared.iter().for_each(|(name, mark)| {
+      module.declared_symbols.iter().for_each(|(name, mark)| {
         let root_mark = self.symbol_box.lock().unwrap().find_root(*mark);
         if mark_to_name.contains_key(&root_mark) {
         } else {
+          let original_name = name.to_string();
           let mut name = name.to_string();
           let mut count = 0;
           while used_names.contains(&name) {
-            name = format!("{}${}", name, count);
+            name = format!("{}${}", original_name, count);
             count += 1;
           }
           mark_to_name.insert(root_mark, name.clone());
@@ -82,13 +83,13 @@ impl Chunk {
         .map(|s| s.to_string())
         .unwrap_or("default_".to_string());
       while module
-        .declared
+        .declared_symbols
         .contains_key(&default_export_name.clone().into())
       {
         default_export_name.push('_');
       }
       if module.exports.contains_key(&"default".into()) {
-        module.declared.insert(
+        module.declared_symbols.insert(
           default_export_name.clone().into(),
           module.exports.get(&"default".into()).unwrap().clone(),
         );
