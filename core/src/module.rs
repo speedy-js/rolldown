@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::plugin_driver::PluginDriver;
 use crate::symbol_box::SymbolBox;
-use crate::utils::resolve_id;
+use crate::utils::{ast_sugar, resolve_id};
 use std::collections::HashMap;
 
 use std::sync::Mutex;
@@ -22,6 +22,12 @@ use swc_ecma_visit::{noop_visit_mut_type, VisitMut};
 use crate::scanner::rel::{ExportDesc, ReExportDesc};
 use crate::types::ResolvedId;
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Namespace {
+  pub included: bool,
+  pub mark: Mark,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct Module {
   pub ast: ast::Module,
@@ -34,6 +40,7 @@ pub struct Module {
   pub imported_symbols: HashMap<JsWord, Mark>,
   pub resolved_ids: HashMap<JsWord, ResolvedId>,
   pub suggested_names: HashMap<JsWord, JsWord>,
+  pub namespace: Namespace,
 }
 
 impl Module {
@@ -49,6 +56,7 @@ impl Module {
       suggested_names: Default::default(),
       declared_symbols: Default::default(),
       imported_symbols: Default::default(),
+      namespace: Default::default(),
     }
   }
 
@@ -63,21 +71,24 @@ impl Module {
   }
 
   pub fn bind_local_references(&self, symbol_box: &mut SymbolBox) {
-    self.local_exports.iter().for_each(|(_exported_name, export_desc)| {
-      let name = if let Some(default_exported_ident) = &export_desc.identifier {
-        default_exported_ident
-      } else {
-        // we need local_name. For `export { foo as bar }`, we need `foo` to bind references.
-        &export_desc.local_name
-      };
-      if name == "default" {
-        // This means that the module's `export default` is a value. No name to bind.
-        // And we need to generate a name for it lately.
-        return;
-      }
-      let symbol_mark = self.resolve_mark(name);
-      symbol_box.union(export_desc.mark, symbol_mark);
-    });
+    self
+      .local_exports
+      .iter()
+      .for_each(|(_exported_name, export_desc)| {
+        let name = if let Some(default_exported_ident) = &export_desc.identifier {
+          default_exported_ident
+        } else {
+          // we need local_name. For `export { foo as bar }`, we need `foo` to bind references.
+          &export_desc.local_name
+        };
+        if name == "default" {
+          // This means that the module's `export default` is a value. No name to bind.
+          // And we need to generate a name for it lately.
+          return;
+        }
+        let symbol_mark = self.resolve_mark(name);
+        symbol_box.union(export_desc.mark, symbol_mark);
+      });
   }
 
   pub fn include(&mut self) {
@@ -120,6 +131,53 @@ impl Module {
       .into_iter()
       .map(|module_item| fold_export_decl_to_decl(module_item, self))
       .collect();
+  }
+
+  pub fn render_namespace_export(&mut self) {
+    if !self.namespace.included {
+      let suggested_default_export_name = self
+        .suggested_names
+        .get(&"*".into())
+        .map(|s| s.clone())
+        .unwrap_or_else(|| {
+          (get_valid_name(nodejs_path::parse(&self.id).name) + "namespace").into()
+        });
+      // TODO: we might need to check if the name already exsits.
+      assert!(!self
+        .declared_symbols
+        .contains_key(&suggested_default_export_name));
+      self.local_exports.insert(
+        "*".to_string().into(),
+        ExportDesc {
+          identifier: None,
+          mark: self.namespace.mark,
+          local_name: suggested_default_export_name.clone(),
+        },
+      );
+      self
+        .exports
+        .insert("*".to_string().into(), self.namespace.mark);
+      let namespace = ast_sugar::namespace(
+        (suggested_default_export_name.clone(), self.namespace.mark),
+        &self
+          .local_exports
+          .iter()
+          .filter(|(exported_name, _)| *exported_name != "default" && *exported_name != "*")
+          .map(|(_name, export_desc)| {
+            (
+              export_desc.local_name.clone(),
+              (export_desc.local_name.clone(), export_desc.mark),
+            )
+          })
+          .collect::<Vec<_>>(),
+      );
+      self
+        .declared_symbols
+        .insert(suggested_default_export_name, self.namespace.mark);
+      self.ast.body.push(ModuleItem::Stmt(namespace));
+      // self.ast.body.push();
+      self.namespace.included = true;
+    }
   }
 }
 
@@ -172,6 +230,9 @@ pub fn fold_export_decl_to_decl(
       .map(|s| s.clone())
       .unwrap_or_else(|| get_valid_name(nodejs_path::parse(&module.id).name).into());
 
+    assert!(!module
+      .declared_symbols
+      .contains_key(&suggested_default_export_name));
     module.declared_symbols.insert(
       suggested_default_export_name.clone(),
       module.exports.get(&"default".into()).unwrap().clone(),

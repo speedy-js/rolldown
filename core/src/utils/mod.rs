@@ -1,3 +1,4 @@
+pub mod ast_sugar;
 use std::path::Path;
 
 use swc_atoms::JsWord;

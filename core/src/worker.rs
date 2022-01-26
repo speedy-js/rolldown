@@ -104,6 +104,7 @@ impl Worker {
             }
           });
         }
+        module.namespace.mark = self.symbol_box.lock().unwrap().new_mark();
 
         module.ast = ast;
 

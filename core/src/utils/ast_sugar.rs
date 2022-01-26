@@ -1,0 +1,93 @@
+use swc_atoms::{js_word, JsWord};
+use swc_common::{util::take::Take, DUMMY_SP, Mark, Span};
+use swc_ecma_ast::{
+  BindingIdent, CallExpr, Decl, Expr, ExprOrSpread, ExprOrSuper, Ident, KeyValueProp, Lit,
+  MemberExpr, Null, ObjectLit, Pat, Prop, PropName, PropOrSpread, Stmt, Str, VarDecl, VarDeclKind,
+  VarDeclarator,
+};
+
+use crate::ext::MarkExt;
+
+#[inline]
+fn jsword(s: &str) -> JsWord {
+  s.to_owned().into()
+}
+
+#[inline]
+fn str(s: &str) -> Str {
+  Str {
+    value: jsword(s),
+    ..Str::dummy()
+  }
+}
+
+fn ident(s: &str, mark: Mark) -> Ident {
+  Ident {
+    sym: jsword(s),
+    span: Span {
+      ctxt: mark.as_ctxt(),
+      ..DUMMY_SP
+    },
+    ..Ident::dummy()
+  }
+}
+
+#[inline]
+fn expr_ident(s: &str) -> Box<Expr> {
+  Box::new(Expr::Ident(Ident {
+    sym: jsword(s),
+    ..Ident::dummy()
+  }))
+}
+
+pub fn namespace(name: (JsWord, Mark), key_values: &[(JsWord, (JsWord, Mark))]) -> Stmt {
+  let mut props = vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
+    key: PropName::Str(str("__proto__")),
+    value: Box::new(Expr::Lit(Lit::Null(Null::dummy()))),
+  })))];
+  props.append(
+    &mut key_values
+      .iter()
+      .map(|(key, value)| {
+        PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
+          key: PropName::Str(str(key)),
+          value: Box::new(Expr::Ident(ident(&value.0, value.1))),
+        })))
+      })
+      .collect(),
+  );
+  Stmt::Decl(Decl::Var(VarDecl {
+    span: DUMMY_SP,
+    kind: VarDeclKind::Const,
+    declare: false,
+    decls: vec![VarDeclarator {
+      span: DUMMY_SP,
+      definite: false,
+      name: Pat::Ident(BindingIdent {
+        type_ann: None,
+        id: ident(&name.0, name.1),
+      }),
+      init: Some(Box::new(Expr::Call(CallExpr {
+        callee: ExprOrSuper::Expr(Box::new(Expr::Member(MemberExpr {
+          obj: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
+            sym: jsword("Object"),
+            ..Ident::dummy()
+          }))),
+          prop: Box::new(Expr::Ident(Ident {
+            sym: jsword("freeze"),
+            ..Ident::dummy()
+          })),
+          ..MemberExpr::dummy()
+        }))),
+        args: vec![ExprOrSpread {
+          expr: Box::new(Expr::Object(ObjectLit {
+            span: DUMMY_SP,
+            props,
+          })),
+          spread: None,
+        }],
+        ..CallExpr::dummy()
+      }))),
+    }],
+  }))
+}

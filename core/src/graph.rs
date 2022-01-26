@@ -270,13 +270,20 @@ impl GraphContainer {
                   .id
               );
 
-              let imported_module_export_mark = self
+              let imported_module = self
                 .id_to_module
-                .get(&self.graph[edge.target()])
-                .unwrap()
+                .get_mut(&self.graph[edge.target()])
+                .unwrap();
+
+              if &imported.original == "*" {
+                imported_module.render_namespace_export();
+              }
+
+              let imported_module_export_mark = imported_module
                 .exports
                 .get(&imported.original)
                 .expect("Not found");
+
               self
                 .symbol_box
                 .lock()
