@@ -10,14 +10,18 @@ use crate::{
   module::Module, renamer::Renamer, symbol_box::SymbolBox, utils::fold_export_decl_to_decl,
 };
 
+use crate::scanner::rel::ExportDesc;
 use crate::utils::create_empty_statement;
 use rayon::prelude::*;
 use swc_atoms::{js_word, JsWord};
 use swc_common::{
   comments::{Comment, CommentKind, Comments, SingleThreadedComments},
-  SyntaxContext, DUMMY_SP,
+  Mark, SyntaxContext, DUMMY_SP,
 };
-use swc_ecma_ast::{EmptyStmt, EsVersion, ModuleDecl, ModuleItem, Stmt};
+use swc_ecma_ast::{
+  EmptyStmt, EsVersion, ExportNamedSpecifier, ExportSpecifier, Ident, ModuleDecl, ModuleItem,
+  NamedExport, Stmt,
+};
 use swc_ecma_codegen::text_writer::JsWriter;
 use swc_ecma_visit::VisitMutWith;
 
@@ -25,6 +29,7 @@ pub struct Chunk {
   pub order_modules: Vec<String>,
   pub symbol_box: Arc<Mutex<SymbolBox>>,
   pub entries: DashSet<String>,
+  pub exports: HashMap<JsWord, Mark>,
   // SyntaxContext to Safe name mapping
   pub canonical_names: HashMap<SyntaxContext, JsWord>,
 }
@@ -41,6 +46,7 @@ impl Chunk {
       symbol_box,
       canonical_names,
       entries,
+      exports: Default::default(),
     }
   }
 
@@ -72,13 +78,17 @@ impl Chunk {
       };
       module.ast.visit_mut_with(&mut renamer);
     });
+
     println!("mark_to_name {:#?}", mark_to_name);
   }
 
   pub fn render(&mut self, modules: &mut HashMap<String, Module>) -> String {
     // let modules = modules.par_iter_mut().map(|(key, module)| (key.clone(), module))
     modules.par_iter_mut().for_each(|(_key, module)| {
-      module.trim_exports();      
+      module.trim_exports();
+      if module.is_user_defined_entry_point {
+        module.generate_exports();
+      }
     });
 
     self.deconflict(modules);

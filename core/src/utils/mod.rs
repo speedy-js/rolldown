@@ -31,7 +31,7 @@ pub mod path {
 }
 
 pub fn is_external_module(source: &str) -> bool {
-  !nodejs_path::is_absolute(source) && !source.starts_with(".")
+  source.starts_with("node:") || (!nodejs_path::is_absolute(source) && !source.starts_with("."))
 }
 
 pub fn parse_file(

@@ -50,6 +50,12 @@ importers:
       rollup: 2.59.0
       typescript: 4.4.4
 
+  core/tests:
+    specifiers:
+      is-odd: link:packages/is-odd
+    dependencies:
+      is-odd: link:packages/is-odd
+
   node:
     specifiers:
       '@node-rs/helper': ^1.2.1

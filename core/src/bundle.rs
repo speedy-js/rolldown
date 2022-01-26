@@ -32,6 +32,7 @@ impl Bundle {
       symbol_box: self.graph_container.symbol_box.clone(),
       entries,
       canonical_names: Default::default(),
+      exports: Default::default(),
     };
 
     chunk.render(&mut self.graph_container.id_to_module)

@@ -9,7 +9,10 @@ fn main() {
   // let mut graph = GraphContainer::new("./tests/fixtures/symbols.js".to_owned());
   // let mut graph = GraphContainer::new("../testcase/custom/samples/default-export/main.js".to_owned());
   // let mut graph = GraphContainer::new("./tests/fixtures/conflicted/index.js".to_owned());
-  let mut graph = GraphContainer::new("./tests/fixtures/inter_module/index.js".to_owned());
+  let mut graph =
+    GraphContainer::from_single_entry("./tests/fixtures/inter_module/index.js".to_owned());
+  // let mut graph =
+  //   GraphContainer::from_single_entry("../node_modules/lodash-es/lodash.js".to_owned());
   graph.build();
   let mut bundle = Bundle::new(graph);
 

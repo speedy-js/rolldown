@@ -10,5 +10,7 @@ const foo = () => {
    console.log("bar", bar)
 })();
 
-// TODO: add support for bundling external modules
-export * from "lodash";
+export * from "is-odd";
+export { foo }
+export const baz = "duplicated baz";
+export * from "./bar"

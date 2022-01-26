@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use swc_atoms::{js_word, JsWord};
-use swc_common::{util::take::Take, DUMMY_SP, Mark, Span};
+use swc_common::{util::take::Take, Mark, Span, DUMMY_SP};
 use swc_ecma_ast::{
-  BindingIdent, CallExpr, Decl, Expr, ExprOrSpread, ExprOrSuper, Ident, KeyValueProp, Lit,
-  MemberExpr, Null, ObjectLit, Pat, Prop, PropName, PropOrSpread, Stmt, Str, VarDecl, VarDeclKind,
-  VarDeclarator,
+  BindingIdent, CallExpr, Decl, ExportNamedSpecifier, ExportSpecifier, Expr, ExprOrSpread,
+  ExprOrSuper, Ident, KeyValueProp, Lit, MemberExpr, ModuleDecl, NamedExport, Null, ObjectLit, Pat,
+  Prop, PropName, PropOrSpread, Stmt, Str, VarDecl, VarDeclKind, VarDeclarator,
 };
 
 use crate::ext::MarkExt;
@@ -45,6 +46,29 @@ fn expr_ident(s: &str) -> Box<Expr> {
     sym: jsword(s),
     ..Ident::dummy()
   }))
+}
+
+pub fn export(exports: &HashMap<JsWord, Mark>) -> ModuleDecl {
+  ModuleDecl::ExportNamed(NamedExport {
+    span: Default::default(),
+    specifiers: exports
+      .iter()
+      .map(|(name, mark)| {
+        ExportSpecifier::Named(ExportNamedSpecifier {
+          span: Default::default(),
+          orig: mark_ident(mark),
+          exported: Some(Ident {
+            sym: name.clone(),
+            ..Ident::dummy()
+          }),
+          is_type_only: false,
+        })
+      })
+      .collect::<Vec<_>>(),
+    src: None,
+    type_only: false,
+    asserts: None,
+  })
 }
 
 pub fn namespace(var_name: (JsWord, Mark), key_values: &[(JsWord, Mark)]) -> Stmt {
