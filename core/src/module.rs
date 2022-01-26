@@ -63,11 +63,12 @@ impl Module {
   }
 
   pub fn bind_local_references(&self, symbol_box: &mut SymbolBox) {
-    self.local_exports.iter().for_each(|(name, export_desc)| {
+    self.local_exports.iter().for_each(|(_exported_name, export_desc)| {
       let name = if let Some(default_exported_ident) = &export_desc.identifier {
         default_exported_ident
       } else {
-        name
+        // we need local_name. For `export { foo as bar }`, we need `foo` to bind references.
+        &export_desc.local_name
       };
       if name == "default" {
         // This means that the module's `export default` is a value. No name to bind.

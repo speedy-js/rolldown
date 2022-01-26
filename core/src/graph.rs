@@ -259,6 +259,17 @@ impl GraphContainer {
                 module.suggest_name(imported.original.clone(), imported.used.clone());
               }
 
+              log::debug!(
+                "[graph]: link imported `{:?}` to exported {} in {}",
+                imported.used,
+                imported.original,
+                &self
+                  .id_to_module
+                  .get(&self.graph[edge.target()])
+                  .unwrap()
+                  .id
+              );
+
               let imported_module_export_mark = self
                 .id_to_module
                 .get(&self.graph[edge.target()])
