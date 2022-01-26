@@ -37,9 +37,10 @@ use crate::{
 type ModuleGraph = petgraph::graph::DiGraph<String, Rel>;
 
 pub struct GraphContainer {
-  pub entry_path: String,
+  pub entries: Vec<String>,
+  resolved_entries: Vec<ResolvedId>,
   pub graph: ModuleGraph,
-  pub entries: Vec<NodeIndex>,
+  pub entry_indexs: Vec<NodeIndex>,
   pub ordered_modules: Vec<NodeIndex>,
   pub plugin_driver: Arc<Mutex<PluginDriver>>,
   pub symbol_box: Arc<Mutex<SymbolBox>>,
@@ -71,10 +72,11 @@ pub enum Msg {
 }
 
 impl GraphContainer {
-  pub fn new(entry_path: String) -> Self {
+  pub fn new(entries: Vec<String>) -> Self {
     Self {
-      entry_path,
-      entries: Default::default(),
+      entries,
+      resolved_entries: Default::default(),
+      entry_indexs: Default::default(),
       ordered_modules: Default::default(),
       plugin_driver: Arc::new(Mutex::new(PluginDriver::new())),
       resolved_ids: Default::default(),
@@ -85,26 +87,31 @@ impl GraphContainer {
     }
   }
 
+  #[inline]
+  pub fn from_single_entry(entry: String) -> Self {
+    Self::new(vec![entry])
+  }
   // build dependency graph via entry modules.
   fn generate_module_graph(&mut self) {
     let nums_of_thread = num_cpus::get_physical();
     let idle_thread_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(nums_of_thread));
     let job_queue: Arc<SegQueue<ResolvedId>> = Default::default();
-    let entry_id = resolve_id(
-      &self.entry_path,
-      None,
-      false,
-      &self.plugin_driver.lock().unwrap(),
-    );
+    self.resolved_entries = self
+      .entries
+      .iter()
+      .map(|entry| resolve_id(entry, None, false, &self.plugin_driver.lock().unwrap()))
+      .collect();
+
     let mut path_to_node_idx: HashMap<String, NodeIndex> = Default::default();
 
-    let entry_idx = self.graph.add_node(entry_id.id.clone());
-    self.entries.push(entry_idx);
-    path_to_node_idx.insert(entry_id.id.clone(), entry_idx);
-    println!("entry_id {:?}", entry_id);
-    job_queue.push(entry_id);
+    self.resolved_entries.iter().for_each(|resolved_entry_id| {
+      let entry_idx = self.graph.add_node(resolved_entry_id.id.clone());
+      self.entry_indexs.push(entry_idx);
+      println!("len {}", resolved_entry_id.id.bytes().len());
+      path_to_node_idx.insert(resolved_entry_id.id.clone(), entry_idx);
+      job_queue.push(resolved_entry_id.clone());
+    });
 
-    // let id_to_module: Arc<DashMap<String, Module>> = self.id_to_module.clone();
     let processed_id: Arc<DashSet<String>> = Default::default();
 
     let (tx, rx) = channel::unbounded::<Msg>();
@@ -138,7 +145,6 @@ impl GraphContainer {
       || job_queue.len() > 0
       || !rx.is_empty()
     {
-      // println!("active_count {}", active_count.load(Ordering::SeqCst));
       if let Ok(job) = rx.try_recv() {
         match job {
           Msg::NewMod(module) => {
@@ -146,11 +152,11 @@ impl GraphContainer {
           }
           Msg::DependencyReference(from, to, rel) => {
             let from_id = *path_to_node_idx
-              .entry(from.clone())
-              .or_insert_with(|| self.graph.add_node(from));
+              .entry(from)
+              .or_insert_with_key(|key| self.graph.add_node(key.clone()));
             let to_id = *path_to_node_idx
-              .entry(to.clone())
-              .or_insert_with(|| self.graph.add_node(to));
+              .entry(to)
+              .or_insert_with_key(|key| self.graph.add_node(key.clone()));
             self.graph.add_edge(from_id, to_id, rel);
           }
           _ => {}
@@ -160,7 +166,7 @@ impl GraphContainer {
   }
 
   fn sort_modules(&mut self) {
-    let mut dfs = DfsPostOrder::new(&self.graph, self.entries[0]);
+    let mut dfs = DfsPostOrder::new(&self.graph, self.entry_indexs[0]);
     let mut ordered_modules = vec![];
     // FIXME: The impalementation isn't correct. It’s not idempotent.
     while let Some(node) = dfs.next(&self.graph) {
@@ -205,6 +211,8 @@ impl GraphContainer {
       module.include();
     });
   }
+
+  // pub fn get_module
 
   pub fn link_module_exports(&mut self) {
     self.ordered_modules.iter().for_each(|idx| {
@@ -276,7 +284,7 @@ impl GraphContainer {
                 .unwrap();
 
               if &imported.original == "*" {
-                imported_module.render_namespace_export();
+                imported_module.include_namespace();
               }
 
               let imported_module_export_mark = imported_module
@@ -311,6 +319,16 @@ impl GraphContainer {
                   module.suggest_name(re_exported.original.clone(), re_exported.used.clone());
                 }
               }
+
+              let re_exported_module = self
+                .id_to_module
+                .get_mut(&self.graph[edge.target()])
+                .unwrap();
+
+              if &re_exported.original == "*" {
+                re_exported_module.include_namespace();
+              }
+
               let re_exported_module_export_mark = self
                 .id_to_module
                 .get(&self.graph[edge.target()])

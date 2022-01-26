@@ -16,7 +16,7 @@ impl Bundle {
 
   pub fn generate(&mut self) -> String {
     let entries = DashSet::new();
-    self.graph_container.entries.iter().for_each(|entry| {
+    self.graph_container.entry_indexs.iter().for_each(|entry| {
       let entry = self.graph_container.graph[*entry].to_owned();
       entries.insert(entry);
     });

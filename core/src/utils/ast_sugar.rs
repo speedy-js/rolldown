@@ -21,7 +21,7 @@ fn str(s: &str) -> Str {
   }
 }
 
-fn ident(s: &str, mark: Mark) -> Ident {
+fn ident(s: &str, mark: &Mark) -> Ident {
   Ident {
     sym: jsword(s),
     span: Span {
@@ -33,6 +33,13 @@ fn ident(s: &str, mark: Mark) -> Ident {
 }
 
 #[inline]
+fn mark_ident(mark: &Mark) -> Ident {
+  let mut i = Ident::dummy();
+  i.span.ctxt = mark.as_ctxt();
+  i
+}
+
+#[inline]
 fn expr_ident(s: &str) -> Box<Expr> {
   Box::new(Expr::Ident(Ident {
     sym: jsword(s),
@@ -40,18 +47,18 @@ fn expr_ident(s: &str) -> Box<Expr> {
   }))
 }
 
-pub fn namespace(name: (JsWord, Mark), key_values: &[(JsWord, (JsWord, Mark))]) -> Stmt {
+pub fn namespace(var_name: (JsWord, Mark), key_values: &[(JsWord, Mark)]) -> Stmt {
   let mut props = vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
     key: PropName::Str(str("__proto__")),
     value: Box::new(Expr::Lit(Lit::Null(Null::dummy()))),
   })))];
   props.append(
     &mut key_values
-      .iter()
+      .into_iter()
       .map(|(key, value)| {
         PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
           key: PropName::Str(str(key)),
-          value: Box::new(Expr::Ident(ident(&value.0, value.1))),
+          value: Box::new(Expr::Ident(mark_ident(value))),
         })))
       })
       .collect(),
@@ -65,7 +72,7 @@ pub fn namespace(name: (JsWord, Mark), key_values: &[(JsWord, (JsWord, Mark))]) 
       definite: false,
       name: Pat::Ident(BindingIdent {
         type_ann: None,
-        id: ident(&name.0, name.1),
+        id: ident(&var_name.0, &var_name.1),
       }),
       init: Some(Box::new(Expr::Call(CallExpr {
         callee: ExprOrSuper::Expr(Box::new(Expr::Member(MemberExpr {

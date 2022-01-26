@@ -133,7 +133,7 @@ impl Module {
       .collect();
   }
 
-  pub fn render_namespace_export(&mut self) {
+  pub fn include_namespace(&mut self) {
     if !self.namespace.included {
       let suggested_default_export_name = self
         .suggested_names
@@ -160,13 +160,13 @@ impl Module {
       let namespace = ast_sugar::namespace(
         (suggested_default_export_name.clone(), self.namespace.mark),
         &self
-          .local_exports
+          .exports
           .iter()
-          .filter(|(exported_name, _)| *exported_name != "default" && *exported_name != "*")
-          .map(|(_name, export_desc)| {
+          .filter(|(exported_name, _mark)| *exported_name != "*")
+          .map(|(exported_name, mark)| {
             (
-              export_desc.local_name.clone(),
-              (export_desc.local_name.clone(), export_desc.mark),
+              exported_name.clone(),
+              *mark,
             )
           })
           .collect::<Vec<_>>(),

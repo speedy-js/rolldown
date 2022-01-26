@@ -66,7 +66,6 @@ pub trait Plugin {
   #[inline]
   fn load(&mut self, _id: &str) -> Option<String> {
     // async, first
-    // TODO: call hook load of plugins
     None
   }
 }
