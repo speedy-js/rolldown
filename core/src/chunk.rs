@@ -1,7 +1,7 @@
 use dashmap::DashSet;
 use std::{
   collections::{HashMap, HashSet},
-  sync::{Arc, Mutex},
+  sync::{Arc, Mutex}, cmp::Ordering,
 };
 
 use petgraph::graph::NodeIndex;
@@ -53,7 +53,17 @@ impl Chunk {
   pub fn deconflict(&mut self, modules: &mut HashMap<String, Module>) {
     let mut used_names = HashSet::new();
     let mut mark_to_name = HashMap::new();
-    modules.values().for_each(|module| {
+    let mut entry_first_modules =  modules.values().collect::<Vec<_>>();
+    entry_first_modules.sort_by(|a, b| {
+      if a.is_user_defined_entry_point && !b.is_user_defined_entry_point {
+        Ordering::Less
+      } else if b.is_user_defined_entry_point && !a.is_user_defined_entry_point {
+        Ordering::Greater
+      } else {
+        Ordering::Equal
+      }
+    });
+    entry_first_modules.into_iter().for_each(|module| {
       module.declared_symbols.iter().for_each(|(name, mark)| {
         let root_mark = self.symbol_box.lock().unwrap().find_root(*mark);
         if mark_to_name.contains_key(&root_mark) {
