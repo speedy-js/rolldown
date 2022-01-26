@@ -76,29 +76,9 @@ impl Chunk {
   }
 
   pub fn render(&mut self, modules: &mut HashMap<String, Module>) -> String {
+    // let modules = modules.par_iter_mut().map(|(key, module)| (key.clone(), module))
     modules.par_iter_mut().for_each(|(_key, module)| {
-      let mut default_export_name = module
-        .suggested_names
-        .get(&js_word!("default"))
-        .map(|s| s.to_string())
-        .unwrap_or("default_".to_string());
-      while module
-        .declared_symbols
-        .contains_key(&default_export_name.clone().into())
-      {
-        default_export_name.push('_');
-      }
-      if module.exports.contains_key(&"default".into()) {
-        module.declared_symbols.insert(
-          default_export_name.clone().into(),
-          module.exports.get(&"default".into()).unwrap().clone(),
-        );
-      }
-      println!("default_export_name {}", default_export_name);
-      module.ast.body.iter_mut().for_each(|module_item| {
-        let is_entry = self.entries.contains(&module.id);
-        fold_export_decl_to_decl(module_item, &default_export_name.clone().into(), is_entry);
-      });
+      module.trim_exports();      
     });
 
     self.deconflict(modules);

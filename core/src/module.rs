@@ -7,11 +7,14 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::{collections::HashSet, hash::Hash};
 
-use ast::{ModuleDecl, ModuleItem};
+use ast::{
+  BindingIdent, ClassDecl, Decl, DefaultDecl, Expr, FnDecl, ModuleDecl, ModuleItem, Pat, Stmt,
+  VarDecl, VarDeclarator,
+};
 use swc_atoms::JsWord;
 
 use swc_common::util::take::Take;
-use swc_common::{Mark, SyntaxContext};
+use swc_common::{Mark, SyntaxContext, DUMMY_SP};
 use swc_ecma_ast::Ident;
 
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut};
@@ -109,6 +112,14 @@ impl Module {
         .expect(&format!("unkown name: {:?} for module {}", name, self.id))
     })
   }
+
+  pub fn trim_exports(&mut self) {
+    let body = self.ast.body.take();
+    self.ast.body = body
+      .into_iter()
+      .map(|module_item| fold_export_decl_to_decl(module_item, self))
+      .collect();
+  }
 }
 
 impl std::fmt::Debug for Module {
@@ -140,5 +151,93 @@ impl VisitMut for ClearMark {
 
   fn visit_mut_ident(&mut self, ident: &mut Ident) {
     ident.span.ctxt = SyntaxContext::empty();
+  }
+}
+
+// FIXME: Not robost
+fn get_valid_name(name: String) -> String {
+  name.chars().filter(|c| c != &'.').collect()
+}
+
+pub fn fold_export_decl_to_decl(
+  module_item: ModuleItem,
+  module: &mut Module,
+  // is_entry: bool,
+) -> ModuleItem {
+  let mut get_default_ident = || {
+    let suggested_default_export_name = module
+      .suggested_names
+      .get(&"default".into())
+      .map(|s| s.clone())
+      .unwrap_or_else(|| get_valid_name(nodejs_path::parse(&module.id).name).into());
+
+    module.declared_symbols.insert(
+      suggested_default_export_name.clone(),
+      module.exports.get(&"default".into()).unwrap().clone(),
+    );
+
+    Ident::new(suggested_default_export_name, DUMMY_SP)
+  };
+  if let ModuleItem::ModuleDecl(module_decl) = module_item {
+    match module_decl {
+      // remove `export` from `export class Foo {...}`
+      ModuleDecl::ExportDecl(export_decl) => ModuleItem::Stmt(Stmt::Decl(export_decl.decl)),
+
+      // remove `export default` from `export default class Foo {...}` or `export default class {...}`
+      ModuleDecl::ExportDefaultDecl(export_decl) => match export_decl.decl {
+        DefaultDecl::Class(node) => ModuleItem::Stmt(Stmt::Decl(Decl::Class(ClassDecl {
+          ident: node.ident.unwrap_or_else(get_default_ident),
+          declare: false,
+          class: node.class,
+        }))),
+        DefaultDecl::Fn(node) => ModuleItem::Stmt(Stmt::Decl(Decl::Fn(FnDecl {
+          ident: node.ident.unwrap_or_else(get_default_ident),
+          declare: false,
+          function: node.function,
+        }))),
+        _ => ModuleItem::dummy(),
+      },
+      ModuleDecl::ExportAll(export_all) => {
+        // keep external module as it (we may use it later on code-gen) and internal modules removed.
+        // export * from 'react'
+        if module
+          .resolved_ids
+          .get(&export_all.src.value)
+          .unwrap()
+          .external
+        {
+          ModuleItem::ModuleDecl(ModuleDecl::ExportAll(export_all))
+        } else {
+          // remove `export * from './foo'`
+          ModuleItem::dummy()
+        }
+      }
+      ModuleDecl::ExportDefaultExpr(export_decl) => {
+        // ignore `export default foo`
+        if let Expr::Ident(_) = export_decl.expr.as_ref() {
+          ModuleItem::dummy()
+        } else {
+          // change `export () => {}` => `const _default = () => {}`
+          ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
+            span: DUMMY_SP,
+            kind: swc_ecma_ast::VarDeclKind::Var,
+            declare: false,
+            decls: vec![VarDeclarator {
+              span: DUMMY_SP,
+              name: Pat::Ident(BindingIdent {
+                id: get_default_ident(),
+                type_ann: None,
+              }),
+              definite: false,
+              init: Some(export_decl.expr.clone()),
+            }],
+          })))
+        }
+      }
+      // remove `export { foo, baz }`
+      _ => ModuleItem::dummy(),
+    }
+  } else {
+    module_item
   }
 }
