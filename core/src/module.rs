@@ -41,6 +41,7 @@ pub struct Module {
   pub resolved_ids: HashMap<JsWord, ResolvedId>,
   pub suggested_names: HashMap<JsWord, JsWord>,
   pub namespace: Namespace,
+  pub is_user_defined_entry_point: bool,
 }
 
 impl Module {
@@ -57,6 +58,7 @@ impl Module {
       declared_symbols: Default::default(),
       imported_symbols: Default::default(),
       namespace: Default::default(),
+      is_user_defined_entry_point: false,
     }
   }
 
@@ -179,6 +181,7 @@ impl Module {
       self.namespace.included = true;
     }
   }
+
 }
 
 impl std::fmt::Debug for Module {

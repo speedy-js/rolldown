@@ -1,5 +1,5 @@
 use std::{
-  collections::HashMap,
+  collections::{HashMap, HashSet},
   sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
@@ -163,6 +163,11 @@ impl GraphContainer {
         }
       }
     }
+    
+    let entries_id = self.entry_indexs.iter().map(|idx| &self.graph[*idx]).collect::<HashSet<&String>>();
+    self.id_to_module.par_iter_mut().for_each(|(_key, module)| {
+      module.is_user_defined_entry_point = entries_id.contains(&module.id);
+    });
   }
 
   fn sort_modules(&mut self) {
