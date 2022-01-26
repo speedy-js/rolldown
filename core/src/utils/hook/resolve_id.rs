@@ -103,7 +103,10 @@ pub fn resolve_id(
       } else {
         nodejs_path::resolve!(source)
       };
-      ResolvedId::new(fast_add_js_extension_if_necessary(id, preserve_symlinks), false)
+      ResolvedId::new(
+        fast_add_js_extension_if_necessary(id, preserve_symlinks),
+        false,
+      )
     };
     res
   })
