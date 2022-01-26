@@ -5,7 +5,8 @@ use std::{
 
 use swc_common::{Mark, SyntaxContext};
 use swc_ecma_ast::{
-  Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop, PropName, PropOrSpread,
+  ExportNamedSpecifier, ExportSpecifier, Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop,
+  PropName, PropOrSpread,
 };
 use swc_ecma_visit::{VisitMut, VisitMutWith};
 
@@ -42,6 +43,15 @@ impl<'me> VisitMut for Renamer<'me> {
     let root_mark = self.symbox_box.lock().unwrap().find_root(mark);
     if let Some(name) = self.mark_to_names.get(&root_mark) {
       node.sym = name.to_string().into()
+    }
+  }
+
+  fn visit_mut_export_named_specifier(&mut self, node: &mut ExportNamedSpecifier) {
+    node.visit_mut_children_with(self);
+    if let Some(exported_ident) = &node.exported {
+      if node.orig.sym == exported_ident.sym {
+        node.exported = None
+      }
     }
   }
 
