@@ -64,6 +64,7 @@ impl Module {
 
   pub fn link_local_exports(&mut self) {
     self.local_exports.iter().for_each(|(key, info)| {
+      println!("curr id: {} key: {}", self.id, key);
       self.exports.insert(key.clone(), info.mark);
     });
     self.re_exports.iter().for_each(|(key, info)| {
@@ -135,6 +136,11 @@ impl Module {
       .collect();
   }
 
+  pub fn generate_exports(&mut self) {
+    let export_decl = ast_sugar::export(&self.exports);
+    self.ast.body.push(ModuleItem::ModuleDecl(export_decl));
+  }
+
   pub fn include_namespace(&mut self) {
     if !self.namespace.included {
       let suggested_default_export_name = self
@@ -165,12 +171,7 @@ impl Module {
           .exports
           .iter()
           .filter(|(exported_name, _mark)| *exported_name != "*")
-          .map(|(exported_name, mark)| {
-            (
-              exported_name.clone(),
-              *mark,
-            )
-          })
+          .map(|(exported_name, mark)| (exported_name.clone(), *mark))
           .collect::<Vec<_>>(),
       );
       self
@@ -181,7 +182,6 @@ impl Module {
       self.namespace.included = true;
     }
   }
-
 }
 
 impl std::fmt::Debug for Module {

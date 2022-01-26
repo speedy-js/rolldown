@@ -168,7 +168,7 @@ impl Scanner {
                   .exported
                   .as_ref()
                   .map_or(s.orig.sym.clone(), |id| id.sym.clone());
-                  let re_export_mark = self.symbol_box.lock().unwrap().new_mark();
+                let re_export_mark = self.symbol_box.lock().unwrap().new_mark();
                 re_export_info.names.insert(Specifier {
                   original: s.orig.sym.clone(),
                   used: name.clone(),
@@ -185,6 +185,7 @@ impl Scanner {
                 );
               } else {
                 // export { foo, bar, baz }
+                println!("export var {:#?}", s);
                 let local_name = s.orig.sym.clone();
                 let exported_name: JsWord = s
                   .exported
@@ -210,7 +211,7 @@ impl Scanner {
                   names: Default::default(),
                   namespace: None,
                 });
-                let re_export_mark = self.symbol_box.lock().unwrap().new_mark();
+              let re_export_mark = self.symbol_box.lock().unwrap().new_mark();
 
               re_export_info.names.insert(Specifier {
                 original: "*".into(),
