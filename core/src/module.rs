@@ -137,8 +137,10 @@ impl Module {
   }
 
   pub fn generate_exports(&mut self) {
-    let export_decl = ast_sugar::export(&self.exports);
-    self.ast.body.push(ModuleItem::ModuleDecl(export_decl));
+    if !self.exports.is_empty() {
+      let export_decl = ast_sugar::export(&self.exports);
+      self.ast.body.push(ModuleItem::ModuleDecl(export_decl));
+    }
   }
 
   pub fn include_namespace(&mut self) {
