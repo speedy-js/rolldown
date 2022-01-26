@@ -21,7 +21,7 @@ pub fn resolve_id(
       } else {
         nodejs_path::resolve!(source)
       };
-      ResolvedId::new(add_js_extension_if_necessary(&id, preserve_symlinks), false)
+      ResolvedId::new(fast_add_js_extension_if_necessary(id, preserve_symlinks), false)
     };
     res
   })
@@ -33,6 +33,14 @@ fn resolve_id_via_plugins(
   plugin_driver: &PluginDriver,
 ) -> Option<ResolvedId> {
   plugin_driver.resolve_id(source, importer)
+}
+
+#[inline]
+fn fast_add_js_extension_if_necessary(mut file: String, _preserve_symlinks: bool) -> String {
+  if !file.ends_with(".js") {
+    file.push_str(".js");
+  }
+  file
 }
 
 fn add_js_extension_if_necessary(file: &str, preserve_symlinks: bool) -> String {
