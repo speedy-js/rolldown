@@ -4,7 +4,7 @@ use swc_common::{Globals, Mark, GLOBALS};
 
 #[derive(Debug)]
 pub struct SymbolBox {
-  mark_uf: InPlaceUnificationTable<MarkIndex>,
+  pub mark_uf: InPlaceUnificationTable<MarkIndex>,
   // globals: Globals,
 }
 

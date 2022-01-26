@@ -128,7 +128,6 @@ impl GraphContainer {
             // need to work again
           } else if idle_thread_count.load(Ordering::SeqCst) == nums_of_thread {
             // All threads are idle now. There's no more work to do.
-            log::debug!("end thread");
             return;
           }
         }
@@ -188,10 +187,13 @@ impl GraphContainer {
     self.include_statements();
     println!("build finished in {}", start.elapsed().as_millis());
 
-    log::debug!("id_to_module {:#?}", self.id_to_module);
-    log::debug!("symbol_box {:#?}", self.symbol_box.lock());
+    log::debug!("modules:\n{:#?}", self.id_to_module);
     log::debug!(
-      "grpah {:?}",
+      "symbol_box:\n{:#?}",
+      self.symbol_box.lock().unwrap().mark_uf
+    );
+    log::debug!(
+      "grpah:\n{:?}",
       petgraph::dot::Dot::with_config(&self.graph, &[])
     );
 
@@ -229,6 +231,7 @@ impl GraphContainer {
       if let Some(module) = self.id_to_module.get_mut(&self.graph[*idx]) {
         dep_module_exports.into_iter().for_each(|(key, mark)| {
           // TODO: we need to detect duplicate export here.
+          assert!(!module.exports.contains_key(&key));
           module.exports.insert(key, mark);
         });
       }
@@ -239,7 +242,11 @@ impl GraphContainer {
     self.ordered_modules.iter().for_each(|idx| {
       let edges = self.graph.edges_directed(*idx, EdgeDirection::Outgoing);
       edges.for_each(|edge| {
-        // let imported_or_re_exported_module =
+        log::debug!(
+          "[graph]: link module from {:?} to {:?}",
+          &self.graph[*idx],
+          &self.graph[edge.target()]
+        );
 
         match edge.weight() {
           Rel::Import(info) => {
@@ -264,6 +271,12 @@ impl GraphContainer {
                 .lock()
                 .unwrap()
                 .union(imported.mark, *imported_module_export_mark);
+
+              log::debug!(
+                "[graph]: link module's import {:?} to related module's mark {:?}",
+                imported,
+                *imported_module_export_mark
+              );
             });
           }
           Rel::ReExport(info) => {
@@ -273,7 +286,12 @@ impl GraphContainer {
                   .id_to_module
                   .get_mut(&self.graph[edge.target()])
                   .unwrap();
-                module.suggest_name(re_exported.original.clone(), re_exported.used.clone());
+                if &re_exported.used == "default" {
+                  // export { default } from './foo'
+                  // Nothing we could suggest about
+                } else {
+                  module.suggest_name(re_exported.original.clone(), re_exported.used.clone());
+                }
               }
               let re_exported_module_export_mark = self
                 .id_to_module
@@ -287,6 +305,11 @@ impl GraphContainer {
                 .lock()
                 .unwrap()
                 .union(re_exported.mark, *re_exported_module_export_mark);
+              log::debug!(
+                "[graph]: link module's re_export {:?} to related module's mark {:?}",
+                re_exported,
+                *re_exported_module_export_mark
+              );
             });
           }
           _ => {}

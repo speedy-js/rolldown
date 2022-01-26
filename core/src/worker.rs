@@ -87,19 +87,17 @@ impl Worker {
             .unwrap();
         });
 
-        module.local_exports = scanner.exports;
+        module.local_exports = scanner.local_exports;
         module.re_exports = scanner.re_exports;
         module.re_export_all_sources = scanner.export_all_sources;
         module.declared = scanner.stacks.into_iter().next().unwrap().declared_symbols;
         module.ast = ast;
 
-        log::debug!("before link_exports module {:#?}", module);
-
         module.bind_local_references(&mut self.symbol_box.lock().unwrap());
 
         module.link_local_exports();
 
-        log::debug!("module {:#?}", module);
+        log::debug!("[worker]: emit module {:#?}", module);
         self.tx.send(Msg::NewMod(module)).unwrap();
       }
     }

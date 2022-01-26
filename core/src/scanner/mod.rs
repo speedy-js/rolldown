@@ -39,7 +39,7 @@ pub struct Scanner {
   // relationships between modules.
   pub imports: HashMap<JsWord, ImportInfo>,
   pub import_infos: HashMap<JsWord, ImportInfo>,
-  pub exports: HashMap<JsWord, ExportDesc>,
+  pub local_exports: HashMap<JsWord, ExportDesc>,
   pub re_exports: HashMap<JsWord, ReExportDesc>,
   pub re_export_infos: HashMap<JsWord, ReExportInfo>,
   pub export_all_sources: HashSet<JsWord>,
@@ -56,7 +56,7 @@ impl Scanner {
       stacks: vec![Scope::new(ScopeKind::Fn)],
       // rel
       imports: Default::default(),
-      exports: Default::default(),
+      local_exports: Default::default(),
       re_exports: Default::default(),
       re_export_infos: Default::default(),
       export_all_sources: Default::default(),
@@ -89,15 +89,16 @@ impl Scanner {
     self
       .stacks
       .iter_mut()
+      .enumerate()
       .rev()
-      .find(|scope| {
+      .find(|(_, scope)| {
         if is_var_decl {
           scope.kind == ScopeKind::Fn
         } else {
           true
         }
       })
-      .map(|scope| {
+      .map(|(idx, scope)| {
         let name = id.sym.clone();
         if let Some(declared_kind) = scope.declared_symbols_kind.get(&name) {
           // Valid
@@ -109,6 +110,7 @@ impl Scanner {
           );
         }
         let mark = self.symbol_box.lock().unwrap().new_mark();
+        log::debug!("[scanner]: new mark {:?} for `{}` is_root_scope: {:#}", mark, id.sym.to_string(), idx == 0);
         scope
           .declared_symbols_kind
           .insert(id.sym.clone().clone(), kind);

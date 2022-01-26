@@ -122,7 +122,7 @@ impl Scanner {
           _ => None,
         };
         // TODO: what's the meaning of Mark for default export
-        self.exports.insert(
+        self.local_exports.insert(
           "default".into(),
           ExportDesc {
             identifier,
@@ -137,7 +137,7 @@ impl Scanner {
           Expr::Ident(id) => Some(id.sym.clone()),
           _ => None,
         };
-        self.exports.insert(
+        self.local_exports.insert(
           "default".into(),
           ExportDesc {
             identifier,
@@ -168,10 +168,11 @@ impl Scanner {
                   .exported
                   .as_ref()
                   .map_or(s.orig.sym.clone(), |id| id.sym.clone());
+                  let re_export_mark = self.symbol_box.lock().unwrap().new_mark();
                 re_export_info.names.insert(Specifier {
                   original: s.orig.sym.clone(),
                   used: name.clone(),
-                  mark: self.symbol_box.lock().unwrap().new_mark(),
+                  mark: re_export_mark,
                 });
                 self.re_exports.insert(
                   name.clone(),
@@ -179,7 +180,7 @@ impl Scanner {
                     local_name: s.orig.sym.clone(),
                     source,
                     original: name.clone(),
-                    mark: self.symbol_box.lock().unwrap().new_mark(),
+                    mark: re_export_mark,
                   },
                 );
               } else {
@@ -189,7 +190,7 @@ impl Scanner {
                   .exported
                   .as_ref()
                   .map_or(s.orig.sym.clone(), |id| id.sym.clone());
-                self.exports.insert(
+                self.local_exports.insert(
                   exported_name.clone(),
                   ExportDesc {
                     identifier: None,
@@ -209,10 +210,12 @@ impl Scanner {
                   names: Default::default(),
                   namespace: None,
                 });
+                let re_export_mark = self.symbol_box.lock().unwrap().new_mark();
+
               re_export_info.names.insert(Specifier {
                 original: "*".into(),
                 used: s.name.sym.clone(),
-                mark: self.symbol_box.lock().unwrap().new_mark(),
+                mark: re_export_mark,
               });
               // export * as name from './other'
               self.sources.insert(source.clone());
@@ -223,7 +226,7 @@ impl Scanner {
                   local_name: "*".into(),
                   source,
                   original: name.clone(),
-                  mark: self.symbol_box.lock().unwrap().new_mark(),
+                  mark: re_export_mark,
                 },
               );
             }
@@ -239,7 +242,7 @@ impl Scanner {
           Decl::Class(node) => {
             // export class Foo {}
             let local_name = node.ident.sym.clone();
-            self.exports.insert(
+            self.local_exports.insert(
               local_name.clone(),
               ExportDesc {
                 identifier: None,
@@ -251,7 +254,7 @@ impl Scanner {
           Decl::Fn(node) => {
             // export function foo () {}
             let local_name = node.ident.sym.clone();
-            self.exports.insert(
+            self.local_exports.insert(
               local_name.clone(),
               ExportDesc {
                 identifier: None,
@@ -267,7 +270,7 @@ impl Scanner {
               collect_js_word_of_pat(&decl.name)
                 .into_iter()
                 .for_each(|local_name| {
-                  self.exports.insert(
+                  self.local_exports.insert(
                     local_name.clone(),
                     ExportDesc {
                       identifier: None,
