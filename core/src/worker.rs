@@ -2,10 +2,12 @@ use std::sync::{Arc, Mutex};
 
 use crossbeam::{channel::Sender, queue::SegQueue};
 use dashmap::DashSet;
+use node_resolve::resolve;
 
 use swc_ecma_ast::{ModuleDecl, ModuleItem};
 use swc_ecma_visit::VisitMutWith;
 
+use crate::types::IsExternal;
 use crate::{
   graph::{Msg, Rel},
   module::Module,
@@ -22,6 +24,7 @@ pub struct Worker {
   pub tx: Sender<Msg>,
   pub plugin_driver: Arc<Mutex<PluginDriver>>,
   pub processed_id: Arc<DashSet<String>>,
+  pub external: Arc<Mutex<Vec<IsExternal>>>,
 }
 
 impl Worker {
@@ -139,7 +142,31 @@ impl Worker {
           _ => {}
         }
         if let Some(depended) = depended {
-          let resolved_id = module.resolve_id(depended, &self.plugin_driver);
+          let mut resolved_id = module.resolve_id(depended, &self.plugin_driver);
+          let is_external =
+            self
+              .external
+              .lock()
+              .unwrap()
+              .iter()
+              .find_map(|test_func| -> Option<bool> {
+                Some(test_func(
+                  resolved_id.id.as_str(),
+                  Some(module.id.as_str()),
+                  false,
+                ))
+              });
+          let internal_external = resolved_id.external;
+
+          resolved_id.external = {
+            if internal_external {
+              true
+            } else {
+              // include all by default
+              is_external.unwrap_or(false)
+            }
+          };
+
           self.job_queue.push(resolved_id);
         }
       }

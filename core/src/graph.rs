@@ -23,6 +23,7 @@ use swc_atoms::JsWord;
 use swc_common::sync::Lrc;
 use swc_common::SourceMap;
 
+use crate::types::{IsExternal, NormalizedInputOptions};
 use crate::{
   external_module::ExternalModule,
   module::Module,
@@ -39,6 +40,7 @@ type ModuleGraph = petgraph::graph::DiGraph<String, Rel>;
 pub struct GraphContainer {
   pub entries: Vec<String>,
   resolved_entries: Vec<ResolvedId>,
+  pub external: Arc<Mutex<Vec<IsExternal>>>,
   pub graph: ModuleGraph,
   pub entry_indexs: Vec<NodeIndex>,
   pub ordered_modules: Vec<NodeIndex>,
@@ -71,9 +73,10 @@ pub enum Msg {
 }
 
 impl GraphContainer {
-  pub fn new(entries: Vec<String>) -> Self {
+  pub fn new(options: &NormalizedInputOptions) -> Self {
     Self {
-      entries,
+      external: Arc::clone(&options.external),
+      entries: options.input.clone(),
       resolved_entries: Default::default(),
       entry_indexs: Default::default(),
       ordered_modules: Default::default(),
@@ -86,10 +89,10 @@ impl GraphContainer {
     }
   }
 
-  #[inline]
-  pub fn from_single_entry(entry: String) -> Self {
-    Self::new(vec![entry])
-  }
+  // #[inline]
+  // pub fn from_single_entry(entry: String) -> Self {
+  //   Self::new(vec![entry])
+  // }
   // build dependency graph via entry modules.
   fn generate_module_graph(&mut self) {
     let nums_of_thread = num_cpus::get();
@@ -123,6 +126,7 @@ impl GraphContainer {
         processed_id: processed_id.clone(),
         plugin_driver: self.plugin_driver.clone(),
         symbol_box: self.symbol_box.clone(),
+        external: self.external.clone(),
       };
       std::thread::spawn(move || loop {
         idle_thread_count.fetch_sub(1, Ordering::SeqCst);

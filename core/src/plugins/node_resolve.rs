@@ -4,9 +4,9 @@ use once_cell::sync::Lazy;
 
 use crate::{ext::StrExt, plugin_driver::Plugin, types::ResolvedId, utils::is_external_module};
 
-struct NodeResolver {}
+pub struct NodeResolve {}
 
-impl Plugin for NodeResolver {
+impl Plugin for NodeResolve {
   fn get_name(&self) -> &'static str {
     "node-resolve"
   }
