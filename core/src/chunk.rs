@@ -4,23 +4,18 @@ use std::{
   sync::{Arc, Mutex}, cmp::Ordering,
 };
 
-use petgraph::graph::NodeIndex;
-
 use crate::{
-  module::Module, renamer::Renamer, symbol_box::SymbolBox, utils::fold_export_decl_to_decl,
+  module::Module, renamer::Renamer, symbol_box::SymbolBox,
 };
 
-use crate::scanner::rel::ExportDesc;
-use crate::utils::create_empty_statement;
 use rayon::prelude::*;
-use swc_atoms::{js_word, JsWord};
+use swc_atoms::{JsWord};
 use swc_common::{
   comments::{Comment, CommentKind, Comments, SingleThreadedComments},
   Mark, SyntaxContext, DUMMY_SP,
 };
 use swc_ecma_ast::{
-  EmptyStmt, EsVersion, ExportNamedSpecifier, ExportSpecifier, Ident, ModuleDecl, ModuleItem,
-  NamedExport, Stmt,
+  EmptyStmt, EsVersion, ModuleItem, Stmt,
 };
 use swc_ecma_codegen::text_writer::JsWriter;
 use swc_ecma_visit::VisitMutWith;

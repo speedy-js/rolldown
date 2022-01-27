@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use swc_atoms::{js_word, JsWord};
+use swc_atoms::{JsWord};
 use swc_common::{util::take::Take, Mark, Span, DUMMY_SP};
 use swc_ecma_ast::{
   BindingIdent, CallExpr, Decl, ExportNamedSpecifier, ExportSpecifier, Expr, ExprOrSpread,

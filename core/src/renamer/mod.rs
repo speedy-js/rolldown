@@ -5,7 +5,7 @@ use std::{
 
 use swc_common::{Mark, SyntaxContext};
 use swc_ecma_ast::{
-  ExportNamedSpecifier, ExportSpecifier, Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop,
+  ExportNamedSpecifier, Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop,
   PropName, PropOrSpread,
 };
 use swc_ecma_visit::{VisitMut, VisitMutWith};

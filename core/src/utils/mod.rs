@@ -1,10 +1,9 @@
 pub mod ast_sugar;
 use std::path::Path;
 
-use swc_atoms::JsWord;
+
 use swc_ecma_ast::{
-  BindingIdent, ClassDecl, Decl, DefaultDecl, EmptyStmt, EsVersion, Expr, FnDecl, Ident,
-  ModuleDecl, ModuleItem, Pat, Stmt, VarDecl, VarDeclarator,
+  EsVersion,
 };
 
 use swc_common::sync::Lrc;
@@ -110,76 +109,4 @@ pub fn parse_code(code: &str) -> Result<swc_ecma_ast::Module, ()> {
     // Unrecoverable fatal error occurred
     e.into_diagnostic(&handler).emit()
   })
-}
-
-use swc_common::DUMMY_SP;
-
-pub fn fold_export_decl_to_decl(
-  module_item: &mut ModuleItem,
-  default_name: &JsWord,
-  is_entry: bool,
-) {
-  if let ModuleItem::ModuleDecl(module_decl) = &module_item {
-    *module_item = match module_decl {
-      // remove export { foo, baz }
-      // FIXME: this will also remove `export * as foo from './foo'`. How we handle this?
-      ModuleDecl::ExportNamed(_) => ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP })),
-      // remove `export` from `export class Foo {...}`
-      ModuleDecl::ExportDecl(export_decl) => ModuleItem::Stmt(Stmt::Decl(export_decl.decl.clone())),
-      // remove `export default` from `export default class Foo {...}`
-      ModuleDecl::ExportDefaultDecl(export_decl) => {
-        if let DefaultDecl::Class(node) = &export_decl.decl {
-          ModuleItem::Stmt(Stmt::Decl(Decl::Class(ClassDecl {
-            ident: node
-              .ident
-              .clone()
-              .unwrap_or_else(|| Ident::new(default_name.clone(), DUMMY_SP)),
-            declare: false,
-            class: node.class.clone(),
-          })))
-        } else if let DefaultDecl::Fn(node) = &export_decl.decl {
-          ModuleItem::Stmt(Stmt::Decl(Decl::Fn(FnDecl {
-            ident: node
-              .ident
-              .clone()
-              .unwrap_or_else(|| Ident::new(default_name.clone(), DUMMY_SP)),
-            declare: false,
-            function: node.clone().function,
-          })))
-        } else {
-          ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(export_decl.clone()))
-        }
-      }
-      ModuleDecl::ExportDefaultExpr(export_decl) => {
-        // `export () => {}` => `const _default = () => {}`
-        if let Expr::Ident(node) = export_decl.expr.as_ref() {
-          create_empty_statement()
-        } else {
-          ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
-            span: DUMMY_SP,
-            kind: swc_ecma_ast::VarDeclKind::Var,
-            declare: false,
-            decls: vec![VarDeclarator {
-              span: DUMMY_SP,
-              name: Pat::Ident(BindingIdent {
-                id: Ident::new(default_name.clone(), DUMMY_SP),
-                type_ann: None,
-              }),
-              definite: false,
-              init: Some(export_decl.expr.clone()),
-            }],
-          })))
-        }
-      }
-      ModuleDecl::ExportAll(export_all) => {
-        // keep external module as it (we may use it later on code-gen) and internal modules removed.
-        if is_entry && is_external_module(export_all.src.value.as_ref()) {
-          ModuleItem::ModuleDecl(module_decl.clone())
-        } else {
-          create_empty_statement()
-        }
-      }
-      _ => create_empty_statement(),
-    };
-  }
 }
