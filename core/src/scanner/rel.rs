@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use swc_atoms::JsWord;
 use swc_common::Mark;
 use swc_ecma_ast::{
-  CallExpr, Decl, DefaultDecl, ExportSpecifier, Expr, ExprOrSuper, Lit, ModuleDecl,
+  CallExpr, Decl, DefaultDecl, ExportSpecifier, Expr, Lit, ModuleDecl, Callee, ModuleExportName,
 };
 
 use crate::{ext::SyntaxContextExt, graph::Rel};
@@ -62,7 +62,13 @@ impl Scanner {
             original = n
               .imported // => foo2 in `import { foo as foo2 } from './foo'`
               .as_ref()
-              .map_or(used.clone(), |ident| ident.sym.clone());
+              .map_or(used.clone(), |module_export_name| {
+                if let ModuleExportName::Ident(ident) = module_export_name {
+                  ident.sym.clone()
+                } else {
+                  panic!("")
+                }
+              });
             mark = n.local.span.ctxt.as_mark();
           }
           // import * as foo from './foo'
@@ -82,7 +88,7 @@ impl Scanner {
   }
 
   pub fn add_dynamic_import(&mut self, call_exp: &CallExpr) {
-    if let ExprOrSuper::Expr(exp) = &call_exp.callee {
+    if let Callee::Expr(exp) = &call_exp.callee {
       if let Expr::Ident(id) = exp.as_ref() {
         let is_callee_import = id.sym.to_string() == "import";
         // FIXME: should warn about pattern like `import(...a)`
@@ -167,17 +173,17 @@ impl Scanner {
                 let name = s
                   .exported
                   .as_ref()
-                  .map_or(s.orig.sym.clone(), |id| id.sym.clone());
+                  .map_or(get_sym_from_module_export(&s.orig).clone(), |id| get_sym_from_module_export(id));
                 let re_export_mark = self.symbol_box.lock().unwrap().new_mark();
                 re_export_info.names.insert(Specifier {
-                  original: s.orig.sym.clone(),
+                  original: get_sym_from_module_export(&s.orig).clone(),
                   used: name.clone(),
                   mark: re_export_mark,
                 });
                 self.re_exports.insert(
                   name.clone(),
                   ReExportDesc {
-                    local_name: s.orig.sym.clone(),
+                    local_name: get_sym_from_module_export(&s.orig).clone(),
                     source,
                     original: name.clone(),
                     mark: re_export_mark,
@@ -186,11 +192,11 @@ impl Scanner {
               } else {
                 // export { foo, bar, baz }
                 println!("export var {:#?}", s);
-                let local_name = s.orig.sym.clone();
+                let local_name = get_sym_from_module_export(&s.orig).clone();
                 let exported_name: JsWord = s
                   .exported
                   .as_ref()
-                  .map_or(s.orig.sym.clone(), |id| id.sym.clone());
+                  .map_or(get_sym_from_module_export(&s.orig), |id| get_sym_from_module_export(&id).clone());
                 self.local_exports.insert(
                   exported_name.clone(),
                   ExportDesc {
@@ -215,12 +221,12 @@ impl Scanner {
 
               re_export_info.names.insert(Specifier {
                 original: "*".into(),
-                used: s.name.sym.clone(),
+                used: get_sym_from_module_export(&s.name).clone(),
                 mark: re_export_mark,
               });
               // export * as name from './other'
               self.sources.insert(source.clone());
-              let name = s.name.sym.clone();
+              let name = get_sym_from_module_export(&s.name).clone();
               self.re_exports.insert(
                 name.clone(),
                 ReExportDesc {
@@ -367,4 +373,12 @@ pub struct Namespace {
   mark: Mark,
   used_prop: Vec<JsWord>,
   // all: bool,
+}
+
+
+fn get_sym_from_module_export(module_export_name: &ModuleExportName) -> JsWord {
+  match module_export_name {
+    ModuleExportName::Ident(i) => i.sym.clone(),
+    _ => panic!("")
+  }
 }

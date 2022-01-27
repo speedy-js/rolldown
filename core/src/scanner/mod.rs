@@ -272,7 +272,7 @@ impl VisitMut for Scanner {
   fn visit_mut_class_prop(&mut self, p: &mut ClassProp) {
     p.decorators.visit_mut_with(self);
 
-    if p.computed {
+    if p.key.is_computed() {
       let old = self.ident_type;
       self.ident_type = IdentType::Binding(BindType::Var);
       p.key.visit_mut_with(self);
@@ -430,7 +430,7 @@ impl VisitMut for Scanner {
   fn visit_mut_member_expr(&mut self, e: &mut MemberExpr) {
     e.obj.visit_mut_with(self);
 
-    if e.computed {
+    if e.prop.is_computed() {
       e.prop.visit_mut_with(self);
     }
   }

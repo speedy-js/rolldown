@@ -45,32 +45,20 @@ pub fn parse_file(
   let ext = p.extension().and_then(|ext| ext.to_str()).unwrap_or("js");
   let syntax = if ext == "ts" || ext == "tsx" {
     Syntax::Typescript(TsConfig {
-      dynamic_import: true,
       decorators: false,
-      import_assertions: true,
       tsx: ext == "tsx",
       ..Default::default()
     })
   } else {
     Syntax::Es(EsConfig {
-      dynamic_import: true,
-      num_sep: true,
       static_blocks: true,
       private_in_object: true,
       import_assertions: true,
-      top_level_await: true,
-      import_meta: true,
       jsx: ext == "jsx",
-      optional_chaining: true,
-      nullish_coalescing: true,
-      export_namespace_from: true,
       export_default_from: true,
       decorators_before_export: true,
       decorators: true,
       fn_bind: true,
-      class_props: true,
-      class_private_props: true,
-      class_private_methods: true,
     })
   };
 

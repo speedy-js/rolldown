@@ -1,3 +1,11 @@
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum InternalModuleFormat {
+  ES,
+  CJS,
+  AMD,
+  UMD,
+}
+
 pub struct NormalizedOutputOptions {
   // --- Options Rolldown doesn't need to be supported
 // /** @deprecated Use the "renderDynamicImport" plugin hook instead. */
@@ -16,7 +24,7 @@ pub struct NormalizedOutputOptions {
 // externalLiveBindings: boolean;
 // file: string | undefined;
 // footer: () => string | Promise<string>;
-// format: InternalModuleFormat;
+pub format: InternalModuleFormat,
 // freeze: boolean;
 // generatedCode: NormalizedGeneratedCodeOptions;
 // globals: GlobalsOption;
@@ -48,6 +56,8 @@ pub struct NormalizedOutputOptions {
 
 impl Default for NormalizedOutputOptions {
   fn default() -> Self {
-    Self {}
+    Self {
+      format: InternalModuleFormat::ES,
+    }
   }
 }

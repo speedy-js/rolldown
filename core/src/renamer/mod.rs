@@ -49,7 +49,7 @@ impl<'me> VisitMut for Renamer<'me> {
   fn visit_mut_export_named_specifier(&mut self, node: &mut ExportNamedSpecifier) {
     node.visit_mut_children_with(self);
     if let Some(exported_ident) = &node.exported {
-      if node.orig.sym == exported_ident.sym {
+      if &node.orig == exported_ident {
         node.exported = None
       }
     }

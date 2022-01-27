@@ -1,10 +1,12 @@
 use std::collections::HashMap;
-use swc_atoms::{JsWord};
-use swc_common::{util::take::Take, Mark, Span, DUMMY_SP};
+use swc::common::util::take::Take;
+use swc_atoms::JsWord;
+use swc_common::{Mark, Span, DUMMY_SP};
 use swc_ecma_ast::{
-  BindingIdent, CallExpr, Decl, ExportNamedSpecifier, ExportSpecifier, Expr, ExprOrSpread,
-  ExprOrSuper, Ident, KeyValueProp, Lit, MemberExpr, ModuleDecl, NamedExport, Null, ObjectLit, Pat,
-  Prop, PropName, PropOrSpread, Stmt, Str, VarDecl, VarDeclKind, VarDeclarator,
+  BindingIdent, CallExpr, Callee, Decl, ExportNamedSpecifier, ExportSpecifier, Expr, ExprOrSpread,
+  Ident, KeyValueProp, Lit, MemberExpr, MemberProp, ModuleDecl, ModuleExportName, NamedExport,
+  Null, ObjectLit, Pat, Prop, PropName, PropOrSpread, Stmt, Str, VarDecl, VarDeclKind,
+  VarDeclarator,
 };
 
 use crate::ext::MarkExt;
@@ -56,11 +58,11 @@ pub fn export(exports: &HashMap<JsWord, Mark>) -> ModuleDecl {
       .map(|(name, mark)| {
         ExportSpecifier::Named(ExportNamedSpecifier {
           span: Default::default(),
-          orig: mark_ident(mark),
-          exported: Some(Ident {
+          orig: ModuleExportName::Ident(mark_ident(mark)),
+          exported: Some(ModuleExportName::Ident(Ident {
             sym: name.clone(),
             ..Ident::dummy()
-          }),
+          })),
           is_type_only: false,
         })
       })
@@ -99,15 +101,15 @@ pub fn namespace(var_name: (JsWord, Mark), key_values: &[(JsWord, Mark)]) -> Stm
         id: ident(&var_name.0, &var_name.1),
       }),
       init: Some(Box::new(Expr::Call(CallExpr {
-        callee: ExprOrSuper::Expr(Box::new(Expr::Member(MemberExpr {
-          obj: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
+        callee: Callee::Expr(Box::new(Expr::Member(MemberExpr {
+          obj: Box::new(Expr::Ident(Ident {
             sym: jsword("Object"),
             ..Ident::dummy()
-          }))),
-          prop: Box::new(Expr::Ident(Ident {
+          })),
+          prop: MemberProp::Ident(Ident {
             sym: jsword("freeze"),
             ..Ident::dummy()
-          })),
+          }),
           ..MemberExpr::dummy()
         }))),
         args: vec![ExprOrSpread {

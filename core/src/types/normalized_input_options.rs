@@ -38,7 +38,7 @@ pub struct NormalizedInputOptions {
   // pub context: Option<String>,
   // pub external: IsExternal,
   // (alias: Option<String>, path: String)
-  pub input: String,
+  pub input: Vec<String>,
   // pub preserve_symlinks: bool,
 }
 
