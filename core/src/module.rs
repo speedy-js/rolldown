@@ -64,7 +64,7 @@ impl Module {
 
   pub fn link_local_exports(&mut self) {
     self.local_exports.iter().for_each(|(key, info)| {
-      println!("curr id: {} key: {}", self.id, key);
+      log::debug!("curr id: {} key: {}", self.id, key);
       self.exports.insert(key.clone(), info.mark);
     });
     self.re_exports.iter().for_each(|(key, info)| {

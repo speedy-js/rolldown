@@ -191,7 +191,7 @@ impl Scanner {
                 );
               } else {
                 // export { foo, bar, baz }
-                println!("export var {:#?}", s);
+                log::debug!("export var {:#?}", s);
                 let local_name = get_sym_from_module_export(&s.orig).clone();
                 let exported_name: JsWord = s
                   .exported

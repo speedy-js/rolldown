@@ -55,7 +55,6 @@ pub enum ModOrExt {
   Ext(ExternalModule),
 }
 
-pub(crate) static SOURCE_MAP: Lazy<Lrc<SourceMap>> = Lazy::new(Default::default);
 
 // Relation between modules
 #[derive(Debug)]
@@ -93,7 +92,7 @@ impl GraphContainer {
   }
   // build dependency graph via entry modules.
   fn generate_module_graph(&mut self) {
-    let nums_of_thread = num_cpus::get_physical();
+    let nums_of_thread = num_cpus::get();
     let idle_thread_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(nums_of_thread));
     let job_queue: Arc<SegQueue<ResolvedId>> = Default::default();
     self.resolved_entries = self
@@ -107,7 +106,7 @@ impl GraphContainer {
     self.resolved_entries.iter().for_each(|resolved_entry_id| {
       let entry_idx = self.graph.add_node(resolved_entry_id.id.clone());
       self.entry_indexs.push(entry_idx);
-      println!("len {}", resolved_entry_id.id.bytes().len());
+      log::debug!("len {}", resolved_entry_id.id.bytes().len());
       path_to_node_idx.insert(resolved_entry_id.id.clone(), entry_idx);
       job_queue.push(resolved_entry_id.clone());
     });
@@ -188,19 +187,19 @@ impl GraphContainer {
   pub fn build(&mut self) {
     let start = Instant::now();
     self.generate_module_graph();
-    println!(
+    log::debug!(
       "generate_module_graph finished in {}",
       start.elapsed().as_millis()
     );
 
     self.sort_modules();
-    println!("sort_modules finished in {}", start.elapsed().as_millis());
+    log::debug!("sort_modules finished in {}", start.elapsed().as_millis());
 
     self.link_module_exports();
     self.link_module();
-    println!("link finished in {}", start.elapsed().as_millis());
+    log::debug!("link finished in {}", start.elapsed().as_millis());
     self.include_statements();
-    println!("build finished in {}", start.elapsed().as_millis());
+    log::debug!("build finished in {}", start.elapsed().as_millis());
 
     log::debug!("modules:\n{:#?}", self.id_to_module);
     log::debug!(
@@ -212,7 +211,7 @@ impl GraphContainer {
       petgraph::dot::Dot::with_config(&self.graph, &[])
     );
 
-    // println!("entry_modules {:?}", Dot::new(&self.graph))
+    // log::debug!("entry_modules {:?}", Dot::new(&self.graph))
   }
 
   pub fn include_statements(&mut self) {

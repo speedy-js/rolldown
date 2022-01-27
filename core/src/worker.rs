@@ -7,7 +7,7 @@ use swc_ecma_ast::{ModuleDecl, ModuleItem};
 use swc_ecma_visit::VisitMutWith;
 
 use crate::{
-  graph::{Msg, Rel, SOURCE_MAP},
+  graph::{Msg, Rel},
   module::Module,
   plugin_driver::PluginDriver,
   scanner::{scope::BindType, Scanner},
@@ -44,7 +44,7 @@ impl Worker {
       } else {
         let mut module = Module::new(resolved_id.id.clone());
         let source = load(&resolved_id.id, &self.plugin_driver.lock().unwrap());
-        let mut ast = parse_file(source, &module.id, &SOURCE_MAP).unwrap();
+        let mut ast = parse_file(source, &module.id);
         self.pre_analyze_imported_module(&mut module, &ast);
 
         let mut scanner = Scanner::new(self.symbol_box.clone(), self.tx.clone());

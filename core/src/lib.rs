@@ -18,3 +18,4 @@ pub mod ext;
 pub mod plugin_driver;
 pub mod symbol_box;
 pub mod plugins;
+pub mod compiler;

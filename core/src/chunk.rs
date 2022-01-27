@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-  module::Module, renamer::Renamer, symbol_box::SymbolBox,
+  module::Module, renamer::Renamer, symbol_box::SymbolBox, compiler,
 };
 
 use rayon::prelude::*;
@@ -84,7 +84,7 @@ impl Chunk {
       module.ast.visit_mut_with(&mut renamer);
     });
 
-    println!("mark_to_name {:#?}", mark_to_name);
+    log::debug!("mark_to_name {:#?}", mark_to_name);
   }
 
   pub fn render(&mut self, modules: &mut HashMap<String, Module>) -> String {
@@ -126,12 +126,14 @@ impl Chunk {
       }
     });
 
+    // compiler::COMPILER.cm
+
     let mut emitter = swc_ecma_codegen::Emitter {
       cfg: swc_ecma_codegen::Config { minify: false },
-      cm: crate::graph::SOURCE_MAP.clone(),
+      cm: compiler::COMPILER.cm.clone(),
       comments: Some(&comments),
       wr: Box::new(JsWriter::with_target(
-        crate::graph::SOURCE_MAP.clone(),
+        compiler::COMPILER.cm.clone(),
         "\n",
         &mut output,
         None,
