@@ -1,4 +1,5 @@
 pub mod ast_sugar;
+pub mod name_helpers;
 use std::path::Path;
 
 

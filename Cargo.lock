@@ -1064,6 +1064,7 @@ dependencies = [
  "once_cell",
  "petgraph",
  "rayon",
+ "regex",
  "smol_str",
  "swc_atoms",
  "swc_common",
