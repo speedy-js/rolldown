@@ -155,8 +155,8 @@ impl Scanner {
                 let re_export_info =
                   self
                     .re_export_infos
-                    .entry(source)
-                    .or_insert_with_key(|source| ReExportInfo {
+                    .entry(source.clone())
+                    .or_insert_with(|| ReExportInfo {
                       source: source.clone(),
                       names: Default::default(),
                       namespace: None,
@@ -206,7 +206,7 @@ impl Scanner {
               let re_export_info = self
                 .re_export_infos
                 .entry(source.clone())
-                .or_insert_with_key(|source| ReExportInfo {
+                .or_insert_with(|| ReExportInfo {
                   source: source.clone(),
                   names: Default::default(),
                   namespace: None,

@@ -1,4 +1,5 @@
 use crossbeam::channel::Sender;
+use linked_hash_map::LinkedHashMap;
 use log::debug;
 use std::{
   collections::{HashMap, HashSet},
@@ -38,10 +39,10 @@ pub struct Scanner {
   pub ident_type: IdentType,
   // relationships between modules.
   pub imports: HashMap<JsWord, ImportInfo>,
-  pub import_infos: HashMap<JsWord, ImportInfo>,
+  pub import_infos: LinkedHashMap<JsWord, ImportInfo>,
   pub local_exports: HashMap<JsWord, ExportDesc>,
   pub re_exports: HashMap<JsWord, ReExportDesc>,
-  pub re_export_infos: HashMap<JsWord, ReExportInfo>,
+  pub re_export_infos: LinkedHashMap<JsWord, ReExportInfo>,
   pub export_all_sources: HashSet<JsWord>,
   pub dynamic_imports: HashSet<DynImportDesc>,
   pub sources: HashSet<JsWord>,

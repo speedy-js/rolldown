@@ -33,6 +33,7 @@ crossbeam = "0.8.1"
 num_cpus = "1.13.1"
 smol_str = "0.1.21"
 node-resolve = "2.2.0"
+linked-hash-map = "0.5.4"
 
 [dev_dependencies]
 insta = "1.11.0"
