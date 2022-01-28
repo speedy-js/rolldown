@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-  module::Module, renamer::Renamer, symbol_box::SymbolBox, compiler,
+  module::Module, renamer::Renamer, symbol_box::SymbolBox, compiler::SOURCE_MAP,
 };
 
 use rayon::prelude::*;
@@ -130,10 +130,10 @@ impl Chunk {
 
     let mut emitter = swc_ecma_codegen::Emitter {
       cfg: swc_ecma_codegen::Config { minify: false },
-      cm: compiler::COMPILER.cm.clone(),
+      cm: SOURCE_MAP.clone(),
       comments: Some(&comments),
       wr: Box::new(JsWriter::with_target(
-        compiler::COMPILER.cm.clone(),
+        SOURCE_MAP.clone(),
         "\n",
         &mut output,
         None,

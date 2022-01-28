@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use swc::common::util::take::Take;
 use swc_atoms::JsWord;
-use swc_common::{Mark, Span, DUMMY_SP};
+use swc_common::{Mark, Span, DUMMY_SP, util::take::Take};
 use swc_ecma_ast::{
   BindingIdent, CallExpr, Callee, Decl, ExportNamedSpecifier, ExportSpecifier, Expr, ExprOrSpread,
   Ident, KeyValueProp, Lit, MemberExpr, MemberProp, ModuleDecl, ModuleExportName, NamedExport,
