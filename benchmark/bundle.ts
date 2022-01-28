@@ -29,9 +29,7 @@ async function bench(entry: string, entryName: string) {
   console.info(`esbuild [${name}]: `, Number(esbuildDuration / BigInt(1e6)).toFixed(2), 'ms')
   await fs.writeFile(join(__dirname, `esbuild-${entryName}.js`), text)
   const beforeRolldown = process.hrtime.bigint()
-  const { code } = await rolldown(entry, {
-    sourcemap: true,
-  })
+  const code = await rolldown(entry)
   const rolldownDuration = process.hrtime.bigint() - beforeRolldown
   console.info(`rolldown: [${name}]`, Number(rolldownDuration / BigInt(1e6)).toFixed(2), 'ms')
   await fs.writeFile(join(__dirname, `rolldown-${entryName}.js`), code)

@@ -15,7 +15,7 @@
     "artifacts": "lerna run artifacts",
     "bench": "node -r @swc-node/register ./benchmark/bench.ts",
     "bench:bundle": "node -r @swc-node/register ./benchmark/bundle.ts",
-    "build": "napi build --platform --release --cargo-cwd ./node -c ./node/package.json",
+    "build": "napi build --platform --release --cargo-cwd ./node -c ./node/package.json --dts binding.d.ts --js binding.js node",
     "lint": "eslint . -c ./.eslintrc.yml",
     "test": "ava",
     "format": "run-p format:md format:json format:yaml format:source",
@@ -27,7 +27,7 @@
     "postinstall": "husky install"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^1.3.5",
+    "@napi-rs/cli": "^2.4.2",
     "@swc-node/register": "^1.3.7",
     "@types/node": "^16.11.6",
     "@typescript-eslint/eslint-plugin": "^5.2.0",

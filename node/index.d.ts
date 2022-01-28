@@ -2,7 +2,7 @@ export interface Options {
   sourcemap?: boolean
 }
 
-export function rolldown(options: Options): Promise<{ code: Buffer; map: Buffer | null }>
+export function rolldown(entry: string, options?: Options): Promise<string>
 export type InputOption = string | string[] | { [entryAlias: string]: string }
 export interface InputOptions {
   // --- Options that Rolldown doesn't need to be supported
