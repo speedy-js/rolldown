@@ -16,7 +16,7 @@ impl Plugin for NodeResolve {
       let result = {
         let normalized_source = source.replace("node:", "");
         if BUILTIN_MODULES.contains(normalized_source.as_str()) {
-          ResolvedId::new(normalized_source, true)
+          ResolvedId::new(normalized_source, Some(true))
         } else {
           let raw_id =
             node_resolve::resolve_from(normalized_source.as_str(), importer.unwrap().as_path());
@@ -25,7 +25,7 @@ impl Plugin for NodeResolve {
             Ok(id) => {
               let file: &Path = id.as_ref();
               // External should be judged based on `external options`
-              ResolvedId::new(file.to_string_lossy().to_string(), false)
+              ResolvedId::new(file.to_string_lossy().to_string(), Some(false))
             }
             Err(_) => panic!("Module {} is not exist.", normalized_source),
           }

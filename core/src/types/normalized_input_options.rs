@@ -34,7 +34,7 @@ pub struct NormalizedInputOptions {
 
   // --- Options that Rolldown must need to be supported
   // treeshake: false | NormalizedTreeshakingOptions;
-  pub plugins: Vec<Box<dyn Plugin>>,
+  pub plugins: Arc<Mutex<Vec<Box<dyn Plugin + Send>>>>,
   // By default, the context of a module – i.e., the value of this at the top level – is undefined. In rare cases you might need to change this to something else, like 'window'.
   // pub context: Option<String>,
   pub external: Arc<Mutex<Vec<IsExternal>>>,

@@ -57,7 +57,6 @@ pub enum ModOrExt {
   Ext(ExternalModule),
 }
 
-
 // Relation between modules
 #[derive(Debug)]
 pub enum Rel {
@@ -80,7 +79,9 @@ impl GraphContainer {
       resolved_entries: Default::default(),
       entry_indexs: Default::default(),
       ordered_modules: Default::default(),
-      plugin_driver: Arc::new(Mutex::new(PluginDriver::new())),
+      plugin_driver: Arc::new(Mutex::new(PluginDriver::from_plugins(
+        options.plugins.clone(),
+      ))),
       resolved_ids: Default::default(),
       id_to_module: Default::default(),
       graph: ModuleGraph::new(),
@@ -101,7 +102,15 @@ impl GraphContainer {
     self.resolved_entries = self
       .entries
       .iter()
-      .map(|entry| resolve_id(entry, None, false, &self.plugin_driver.lock().unwrap()))
+      .map(|entry| {
+        resolve_id(
+          entry,
+          None,
+          false,
+          &self.plugin_driver.lock().unwrap(),
+          self.external.clone(),
+        )
+      })
       .collect();
 
     let mut path_to_node_idx: HashMap<String, NodeIndex> = Default::default();
@@ -235,11 +244,11 @@ impl GraphContainer {
           .re_export_all_sources
           .clone()
           .iter()
-          .map(|dep| module.resolve_id(dep, &self.plugin_driver))
+          .map(|dep| module.resolve_id(dep, &self.plugin_driver, self.external.clone()))
           .collect::<Vec<_>>();
 
         re_export_all_ids.into_iter().for_each(|resolved_id| {
-          if !resolved_id.external {
+          if !resolved_id.external.unwrap_or_default() {
             let re_exported = self.id_to_module.get(&resolved_id.id).unwrap();
             re_exported.exports.clone().into_iter().for_each(|item| {
               dep_module_exports.push(item);

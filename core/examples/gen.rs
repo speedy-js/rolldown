@@ -1,6 +1,7 @@
 use rolldown::plugins::node_resolve::NodeResolve;
 use rolldown::types::NormalizedInputOptions;
 use rolldown::{bundle::Bundle, graph::GraphContainer};
+use std::sync::{Arc, Mutex};
 
 // use rolldown::graph::GraphContainer;
 
@@ -20,7 +21,7 @@ fn main() {
   // graph.build();
   let mut bundle = Bundle::new(NormalizedInputOptions {
     input: vec!["./tests/fixtures/inter_module/index.js".to_owned()],
-    plugins: vec![Box::new(NodeResolve {})],
+    plugins: Arc::new(Mutex::new(vec![Box::new(NodeResolve {})])),
     ..NormalizedInputOptions::default()
   });
 
