@@ -1,23 +1,21 @@
 use dashmap::DashSet;
 use smol_str::SmolStr;
 use std::{
+  cmp::Ordering,
   collections::{HashMap, HashSet},
-  sync::{Arc, Mutex}, cmp::Ordering,
+  sync::{Arc, Mutex},
 };
 
-use crate::{
-  module::Module, renamer::Renamer, symbol_box::SymbolBox, compiler::SOURCE_MAP,
-};
+use crate::{compiler::SOURCE_MAP, module::Module, renamer::Renamer, symbol_box::SymbolBox};
 
 use rayon::prelude::*;
-use swc_atoms::{JsWord};
+use std::borrow::Borrow;
+use swc_atoms::JsWord;
 use swc_common::{
   comments::{Comment, CommentKind, Comments, SingleThreadedComments},
   Mark, SyntaxContext, DUMMY_SP,
 };
-use swc_ecma_ast::{
-  EmptyStmt, EsVersion, ModuleItem, Stmt,
-};
+use swc_ecma_ast::{EmptyStmt, EsVersion, ModuleItem, Stmt};
 use swc_ecma_codegen::text_writer::JsWriter;
 use swc_ecma_visit::VisitMutWith;
 
@@ -49,7 +47,11 @@ impl Chunk {
   pub fn deconflict(&mut self, modules: &mut HashMap<SmolStr, Module>) {
     let mut used_names = HashSet::new();
     let mut mark_to_name = HashMap::new();
-    let mut entry_first_modules =  self.order_modules.iter().map(|id| modules.get(id).unwrap()).collect::<Vec<_>>();
+    let mut entry_first_modules = self
+      .order_modules
+      .iter()
+      .map(|id| modules.get(id).unwrap())
+      .collect::<Vec<_>>();
     entry_first_modules.sort_by(|a, b| {
       if a.is_user_defined_entry_point && !b.is_user_defined_entry_point {
         Ordering::Less
@@ -59,7 +61,13 @@ impl Chunk {
         Ordering::Equal
       }
     });
-    println!("entry_first_modules {:#?}", entry_first_modules.iter().map(|m| &m.id).collect::<Vec<_>>());
+    println!(
+      "entry_first_modules {:#?}",
+      entry_first_modules
+        .iter()
+        .map(|m| &m.id)
+        .collect::<Vec<_>>()
+    );
     entry_first_modules.into_iter().for_each(|module| {
       let mut declared_symbols = module.declared_symbols.iter().collect::<Vec<_>>();
       // declared_symbols.sort_by(|a, b| {
@@ -113,6 +121,8 @@ impl Chunk {
     let mut output = Vec::new();
     let comments = SingleThreadedComments::default();
 
+    let mut src_map_buf = vec![];
+
     let mut emitter = swc_ecma_codegen::Emitter {
       cfg: swc_ecma_codegen::Config { minify: false },
       cm: SOURCE_MAP.clone(),
@@ -121,7 +131,7 @@ impl Chunk {
         SOURCE_MAP.clone(),
         "\n",
         &mut output,
-        None,
+        Some(&mut src_map_buf),
         EsVersion::latest(),
       )),
     };
@@ -131,6 +141,15 @@ impl Chunk {
         module.render(&mut emitter);
       }
     });
+
+    let result = SOURCE_MAP.clone();
+    let mut src_output: Vec<u8> = vec![];
+    result.new_source_file();
+    result
+      .build_source_map(&mut src_map_buf)
+      .to_writer(&mut src_output)
+      .unwrap();
+    println!("{}", String::from_utf8(src_output).unwrap());
 
     String::from_utf8(output).unwrap()
   }

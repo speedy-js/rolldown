@@ -5,6 +5,7 @@ use rolldown::{bundle::Bundle, graph::Graph, types::NormalizedInputOptions};
 fn main() {
   env_logger::init();
   // let mut graph = GraphContainer::from_single_entry("./tests/fixtures/preact/index.js".to_owned());
+  // let mut graph = GraphContainer::from_single_entry("./tests/fixtures/preact/index.js".to_owned());
   // let mut graph = GraphContainer::from_single_entry("../../three.js/src/Three.js".to_owned());
   // let mut graph = GraphContainer::from_single_entry("./tests/fixtures/basic/main.js".to_owned());
   // let mut graph = GraphContainer::from_single_entry("./tests/fixtures/symbols.js".to_owned());

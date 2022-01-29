@@ -11,7 +11,7 @@ path = "examples/build.rs"
 test = false
 
 [dependencies.swc_common]
-features = ["tty-emitter", "concurrent"]
+features = ["tty-emitter", "concurrent", "sourcemap"]
 version = "0.17.2"
 
 [dependencies]

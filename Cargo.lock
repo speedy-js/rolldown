@@ -1167,6 +1167,7 @@ dependencies = [
  "scoped-tls",
  "serde",
  "siphasher",
+ "sourcemap",
  "string_cache",
  "swc_eq_ignore_macros",
  "swc_visit",
