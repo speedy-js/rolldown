@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use swc_atoms::JsWord;
-use swc_common::{Mark, Span, DUMMY_SP, util::take::Take};
+use swc_common::{util::take::Take, Mark, Span, DUMMY_SP};
 use swc_ecma_ast::{
   BindingIdent, CallExpr, Callee, Decl, ExportNamedSpecifier, ExportSpecifier, Expr, ExprOrSpread,
   Ident, KeyValueProp, Lit, MemberExpr, MemberProp, ModuleDecl, ModuleExportName, NamedExport,
@@ -50,10 +50,14 @@ fn expr_ident(s: &str) -> Box<Expr> {
 }
 
 pub fn export(exports: &HashMap<JsWord, Mark>) -> ModuleDecl {
+  let mut exports = exports.into_iter().collect::<Vec<_>>();
+
+  exports.sort_by(|a, b| a.0.cmp(b.0));
+
   ModuleDecl::ExportNamed(NamedExport {
     span: Default::default(),
     specifiers: exports
-      .iter()
+      .into_iter()
       .map(|(name, mark)| {
         ExportSpecifier::Named(ExportNamedSpecifier {
           span: Default::default(),
@@ -72,7 +76,11 @@ pub fn export(exports: &HashMap<JsWord, Mark>) -> ModuleDecl {
   })
 }
 
-pub fn namespace(var_name: (JsWord, Mark), key_values: &[(JsWord, Mark)]) -> Stmt {
+pub fn namespace(var_name: (JsWord, Mark), key_values: &HashMap<JsWord, Mark>) -> Stmt {
+  let mut key_values = key_values.into_iter().collect::<Vec<_>>();
+  key_values.sort_by(|a, b| {
+    a.0.cmp(b.0)
+  });
   let mut props = vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
     key: PropName::Str(str("__proto__")),
     value: Box::new(Expr::Lit(Lit::Null(Null::dummy()))),

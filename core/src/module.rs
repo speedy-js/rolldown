@@ -252,12 +252,7 @@ impl Module {
         .insert("*".to_string().into(), self.namespace.mark);
       let namespace = ast_sugar::namespace(
         (suggested_default_export_name.clone(), self.namespace.mark),
-        &self
-          .exports
-          .iter()
-          .filter(|(exported_name, _mark)| *exported_name != "*")
-          .map(|(exported_name, mark)| (exported_name.clone(), *mark))
-          .collect::<Vec<_>>(),
+        &self.exports
       );
       let mut s = Statement::new(ast::ModuleItem::Stmt(namespace.clone()));
       s.include();
