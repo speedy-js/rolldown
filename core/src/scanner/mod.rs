@@ -1,6 +1,5 @@
 use crossbeam::channel::Sender;
 use linked_hash_map::LinkedHashMap;
-use log::debug;
 use std::{
   collections::{HashMap, HashSet},
   sync::{Arc, Mutex},
@@ -559,7 +558,11 @@ impl VisitMut for Scanner {
   }
 }
 
-// TODO: handle `var foo = 1`
+// We use Hoister to handle JavaScript Hoisting. https://developer.mozilla.org/en-US/docs/Glossary/Hoisting.
+// Hoister will only deal with current scope, stop when reach next function scope.
+// TODO: Function hoisting
+// TODO: Variable hoisting
+// Import declaration
 pub struct Hoister<'me> {
   scanner: &'me mut Scanner,
   ident_type: Option<IdentType>,
