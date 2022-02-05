@@ -180,7 +180,6 @@ impl Graph {
     while let Some(node_idx) = stack.pop() {
       if !visited.contains(&node_idx) {
         stack.push(node_idx);
-        print!("visit {}\n", self.graph[node_idx]);
         visited.insert(node_idx);
         let edges = self.graph.edges_directed(node_idx, EdgeDirection::Outgoing);
         let mut rels = edges.map(|e| e).collect::<Vec<_>>();
@@ -191,7 +190,6 @@ impl Graph {
           .filter(|edge| !visited.contains(&edge.target()))
           .for_each(|edge| stack.push(edge.target()));
       } else {
-        print!("end {}\n", self.graph[node_idx]);
         ordered_modules.push(node_idx);
       }
       // ordered_modules = ordered_modules.into_iter().rev().collect()
@@ -205,30 +203,20 @@ impl Graph {
   }
 
   pub fn build(&mut self) {
-    let start = Instant::now();
+    let build_start = Instant::now();
     self.generate_module_graph();
-    log::debug!(
-      "generate_module_graph finished in {}",
-      start.elapsed().as_millis()
-    );
 
     self.sort_modules();
-    log::debug!("sort_modules finished in {}", start.elapsed().as_millis());
+    log::debug!(
+      "sort_modules finished in {}",
+      build_start.elapsed().as_millis()
+    );
 
     self.link_module_exports();
     self.link_module();
-    log::debug!("link finished in {}", start.elapsed().as_millis());
     self.include();
-    log::debug!("build finished in {}", start.elapsed().as_millis());
 
-    log::debug!("modules:\n{:#?}", self.module_by_id);
-
-    log::debug!(
-      "grpah:\n{:?}",
-      petgraph::dot::Dot::with_config(&self.graph, &[])
-    );
-
-    // log::debug!("entry_modules {:?}", Dot::new(&self.graph))
+    println!("build() finished in {}", build_start.elapsed().as_millis());
   }
 
   pub fn include(&mut self) {

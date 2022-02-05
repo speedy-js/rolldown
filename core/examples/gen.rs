@@ -1,8 +1,11 @@
+use std::time::Instant;
+
 use rolldown::{bundle::Bundle, graph::Graph, types::{NormalizedInputOptions, NormalizedOutputOptions}, RolldownBuild};
 
 // use rolldown::graph::GraphContainer;
 
 fn main() {
+  let start = Instant::now();
   env_logger::init();
   // let mut graph = GraphContainer::from_single_entry("./tests/fixtures/preact/index.js".to_owned());
   // let mut graph = GraphContainer::from_single_entry("../../three.js/src/Three.js".to_owned());
@@ -17,9 +20,9 @@ fn main() {
   //   GraphContainer::from_single_entry("../node_modules/lodash-es/lodash.js".to_owned());
   let rolldown_build = RolldownBuild::new(NormalizedInputOptions {
     input: vec![
-      // "../../three.js/src/Three.js".to_owned(),
+      "../../three.js/src/Three.js".to_owned(),
       // "./tests/fixtures/preact/index.js".to_owned(),
-      "./tests/fixtures/tree-shaking/index.js".to_owned(),
+      // "./tests/fixtures/tree-shaking/index.js".to_owned(),
     ],
     treeshake: true,
     ..Default::default()
@@ -31,6 +34,6 @@ fn main() {
     ..Default::default()
   });
 
-  println!("output:\n{:#?}", output);
-
+  log::info!("output:\n{:#?}", output);
+  println!("gen() finished in {}", start.elapsed().as_millis());
 }

@@ -64,13 +64,6 @@ impl Chunk {
         Ordering::Equal
       }
     });
-    println!(
-      "entry_first_modules {:#?}",
-      entry_first_modules
-        .iter()
-        .map(|m| &m.id)
-        .collect::<Vec<_>>()
-    );
     entry_first_modules.into_iter().for_each(|module| {
       let mut declared_symbols = module.declared_symbols.iter().collect::<Vec<_>>();
       // declared_symbols.sort_by(|a, b| {
@@ -109,44 +102,8 @@ impl Chunk {
 
     log::debug!("mark_to_name {:#?}", mark_to_name);
   }
-
-  pub fn render(&mut self, modules: &mut HashMap<SmolStr, Module>) -> String {
-    // let modules = modules.par_iter_mut().map(|(key, module)| (key.clone(), module))
-    modules.par_iter_mut().for_each(|(_key, module)| {
-      module.trim_exports();
-      if module.is_user_defined_entry_point {
-        module.generate_exports();
-      }
-    });
-
-    self.deconflict(modules);
-
-    let mut output = Vec::new();
-    let comments = SingleThreadedComments::default();
-
-    let mut emitter = swc_ecma_codegen::Emitter {
-      cfg: swc_ecma_codegen::Config { minify: false },
-      cm: SOURCE_MAP.clone(),
-      comments: Some(&comments),
-      wr: Box::new(JsWriter::with_target(
-        SOURCE_MAP.clone(),
-        "\n",
-        &mut output,
-        None,
-        EsVersion::latest(),
-      )),
-    };
-
-    self.order_modules.iter().for_each(|idx| {
-      if let Some(module) = modules.get(idx) {
-        module.render(&mut emitter);
-      }
-    });
-
-    String::from_utf8(output).unwrap()
-  }
-
-  pub fn render_new(
+  
+  pub fn render(
     &mut self,
     options: &NormalizedOutputOptions,
     modules: &mut HashMap<SmolStr, Module>,

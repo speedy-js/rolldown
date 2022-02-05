@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use dashmap::DashSet;
 
@@ -18,30 +18,9 @@ impl Bundle {
     }
   }
 
-  pub fn generate(&mut self) -> String {
-    let entries = DashSet::new();
-    self.graph.entry_indexs.iter().for_each(|entry| {
-      let entry = self.graph.graph[*entry].to_owned();
-      entries.insert(entry);
-    });
+  pub fn generate(&mut self) -> HashMap<String, OutputChunk> {
+    let gen_start = Instant::now();
 
-    let mut chunk = Chunk {
-      id: Default::default(),
-      order_modules: self
-        .graph
-        .ordered_modules
-        .clone()
-        .into_iter()
-        .map(|idx| self.graph.graph[idx].clone())
-        .collect(),
-      symbol_box: self.graph.symbol_box.clone(),
-      entries,
-    };
-
-    chunk.render(&mut self.graph.module_by_id)
-  }
-
-  pub fn generate_new(&mut self) -> HashMap<String, OutputChunk> {
     let entries = DashSet::new();
     self.graph.entry_indexs.iter().for_each(|entry| {
       let entry = self.graph.graph[*entry].to_owned();
@@ -71,16 +50,18 @@ impl Bundle {
 
     let rendered_chunks = chunks
       .iter_mut()
-      .map(|chunk| chunk.render_new(&self.output_options, &mut self.graph.module_by_id))
+      .map(|chunk| chunk.render(&self.output_options, &mut self.graph.module_by_id))
       .collect::<Vec<_>>();
 
-    rendered_chunks
+    let output =  rendered_chunks
       .into_iter()
       .map(|chunk| OutputChunk {
         file_name: chunk.file_name,
         code: chunk.code,
       })
       .map(|output_chunk| (output_chunk.file_name.clone(), output_chunk))
-      .collect()
+      .collect();
+      println!("generate() finished in {}", gen_start.elapsed().as_millis());
+      output
   }
 }

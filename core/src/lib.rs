@@ -57,7 +57,7 @@ fn handle_generate_write(
     assert!(output_options.dir.is_some() || output_options.file.is_some());
   }
   let mut bundle = Bundle::new(graph, output_options);
-  let output = bundle.generate_new();
+  let output = bundle.generate();
   let output = output
     .into_iter()
     .map(|(_, output_chunk)| RolldownOutput::Chunk(output_chunk))
@@ -80,6 +80,6 @@ fn write_output_file(output_file: &RolldownOutput, output_options: &NormalizedOu
   );
 
   std::fs::create_dir_all(nodejs_path::dirname(&file_name));
-  println!("file_name {}", file_name);
+  log::info!("file_name {}", file_name);
   std::fs::write(file_name, output_file.get_content()).unwrap();
 }

@@ -35,7 +35,8 @@ impl Task for Rolldown {
     let mut graph = rolldown::graph::Graph::from_single_entry(self.entry.clone());
     graph.build();
     let mut bundle = rolldown::bundle::Bundle::new(graph, Default::default());
-    Ok(bundle.generate())
+    bundle.generate();
+    Ok("".to_string())
   }
 
   fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
