@@ -1,9 +1,9 @@
 use crate::ast;
-use crate::scanner::{ModuleItemInfo, SideEffect};
+use crate::scanner::{ModuleItemInfo};
 use crate::statement::Statement;
 use crate::symbol_box::SymbolBox;
+use crate::utils::side_effect::SideEffect;
 use crate::utils::{ast_sugar, resolve_id};
-use petgraph::visit::Walker;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
@@ -75,7 +75,6 @@ impl Module {
 
   pub fn link_local_exports(&mut self) {
     self.local_exports.iter().for_each(|(key, info)| {
-      log::debug!("curr id: {} key: {}", self.id, key);
       self.exports.insert(key.clone(), info.mark);
     });
     self.re_exports.iter().for_each(|(key, info)| {
@@ -118,7 +117,7 @@ impl Module {
         });
         stmt.writes = info.writes;
         stmt.reads = info.reads;
-        stmt.side_effect = info.side_effects;
+        stmt.side_effect = info.side_effect;
         if stmt.side_effect.is_none() {
           let has_unkown_name = stmt
             .reads
@@ -126,7 +125,7 @@ impl Module {
             .chain(stmt.writes.iter())
             .any(|name| !self.declared_symbols.contains_key(name));
           if has_unkown_name {
-            stmt.side_effect = Some(SideEffect::GlobalName)
+            stmt.side_effect = Some(SideEffect::VisitGlobalVar)
           }
         }
 
@@ -167,8 +166,6 @@ impl Module {
         })
         .flat_map(|stmt| vec![&stmt.declared, &stmt.reads, &stmt.writes])
         .flatten()
-        // .filter_map(|name| *self.definations.get(name).expect(&format!("include name {:?} in {:?}", name, self.id)))
-        // TODO: we might need to check if the name is in the scope
         .filter_map(|name| self.definations.get(name))
         .cloned()
         .collect::<Vec<_>>()
@@ -252,7 +249,7 @@ impl Module {
         .insert("*".to_string().into(), self.namespace.mark);
       let namespace = ast_sugar::namespace(
         (suggested_default_export_name.clone(), self.namespace.mark),
-        &self.exports
+        &self.exports,
       );
       let mut s = Statement::new(ast::ModuleItem::Stmt(namespace.clone()));
       s.include();

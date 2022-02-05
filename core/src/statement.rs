@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use swc_atoms::JsWord;
 use swc_ecma_ast::ModuleItem;
 
-use crate::scanner::SideEffect;
+use crate::utils::side_effect::SideEffect;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Statement {

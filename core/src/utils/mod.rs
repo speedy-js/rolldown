@@ -1,5 +1,6 @@
 pub mod ast_sugar;
 pub mod name_helpers;
+pub mod side_effect;
 use std::path::Path;
 
 use swc_ecma_ast::EsVersion;
@@ -72,3 +73,5 @@ pub fn parse_file(
   });
   parser.parse_module().unwrap()
 }
+
+

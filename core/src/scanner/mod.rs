@@ -14,7 +14,7 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{noop_visit_mut_type, VisitAllWith, VisitMut, VisitMutWith};
 
-use crate::{ext::MarkExt, graph::Msg, symbol_box::SymbolBox};
+use crate::{ext::MarkExt, graph::Msg, symbol_box::SymbolBox, utils::side_effect::{detect_side_effect, SideEffect}};
 
 use self::{
   rel::RelationInfo,
@@ -27,20 +27,13 @@ pub mod scope;
 mod symbol;
 use rel::{DynImportDesc, ExportDesc, ReExportDesc};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SideEffect {
-  Call,
-  PropVisit,
-  NonRootScope,
-  GlobalName,
-}
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ModuleItemInfo {
   pub declared: HashSet<JsWord>,
   pub reads: HashSet<JsWord>,
   pub writes: HashSet<JsWord>,
-  pub side_effects: Option<SideEffect>,
+  pub side_effect: Option<SideEffect>,
 }
 
 // Declare symbols
@@ -188,25 +181,8 @@ impl VisitMut for Scanner {
   }
 
   fn visit_mut_module_item(&mut self, node: &mut swc_ecma_ast::ModuleItem) {
-    if let ModuleItem::Stmt(stmt) = node {
-      match stmt {
-        Stmt::Expr(expr_stmt) => match expr_stmt.expr.as_ref() {
-          Expr::Call(_) => {
-            self.statement_infos[self.cur_stmt_index].side_effects = Some(SideEffect::Call);
-          }
-          Expr::Object(_) => {
-            self.statement_infos[self.cur_stmt_index].side_effects = Some(SideEffect::PropVisit);
-          }
-          _ => {}
-        },
-        Stmt::Block(_) => {
-          self.statement_infos[self.cur_stmt_index].side_effects = Some(SideEffect::NonRootScope);
-        }
-        _ => {}
-      }
-    }
-
     node.visit_mut_children_with(self);
+    self.statement_infos[self.cur_stmt_index].side_effect = detect_side_effect(&node);
     self.cur_stmt_index += 1;
   }
 

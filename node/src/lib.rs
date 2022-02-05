@@ -34,7 +34,7 @@ impl Task for Rolldown {
   fn compute(&mut self) -> Result<Self::Output> {
     let mut graph = rolldown::graph::Graph::from_single_entry(self.entry.clone());
     graph.build();
-    let mut bundle = rolldown::bundle::Bundle::new(graph);
+    let mut bundle = rolldown::bundle::Bundle::new(graph, Default::default());
     Ok(bundle.generate())
   }
 

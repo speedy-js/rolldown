@@ -44,12 +44,6 @@ pub struct Graph {
   pub resolved_ids: HashMap<(Option<JsWord>, JsWord), ResolvedId>,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-pub enum ModOrExt {
-  Mod(Module),
-  Ext(ExternalModule),
-}
-
 // Relation between modules
 #[derive(Debug)]
 pub enum Rel {

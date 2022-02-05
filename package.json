@@ -16,6 +16,7 @@
     "bench": "node -r @swc-node/register ./benchmark/bench.ts",
     "bench:bundle": "node -r @swc-node/register ./benchmark/bundle.ts",
     "build": "napi build --platform --release --cargo-cwd ./node -c ./node/package.json --dts binding.d.ts --js binding.js node",
+    "build:debug": "napi build --platform --cargo-cwd ./node -c ./node/package.json --dts binding.d.ts --js binding.js node",
     "lint": "eslint . -c ./.eslintrc.yml",
     "test": "ava",
     "format": "run-p format:md format:json format:yaml format:source",

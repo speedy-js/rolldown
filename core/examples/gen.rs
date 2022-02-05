@@ -1,4 +1,4 @@
-use rolldown::{bundle::Bundle, graph::Graph, types::NormalizedInputOptions};
+use rolldown::{bundle::Bundle, graph::Graph, types::{NormalizedInputOptions, NormalizedOutputOptions}, RolldownBuild};
 
 // use rolldown::graph::GraphContainer;
 
@@ -15,18 +15,22 @@ fn main() {
   //   GraphContainer::from_single_entry("./tests/fixtures/inter_module/index.js".to_owned());
   // let mut graph =
   //   GraphContainer::from_single_entry("../node_modules/lodash-es/lodash.js".to_owned());
-  let mut graph = Graph::new(NormalizedInputOptions {
+  let rolldown_build = RolldownBuild::new(NormalizedInputOptions {
     input: vec![
       // "../../three.js/src/Three.js".to_owned(),
+      // "./tests/fixtures/preact/index.js".to_owned(),
       "./tests/fixtures/tree-shaking/index.js".to_owned(),
     ],
     treeshake: true,
     ..Default::default()
   });
-  graph.build();
-  let mut bundle = Bundle::new(graph);
+  let output = rolldown_build.write(NormalizedOutputOptions {
+    // entry_file_names: "[name].js".to_string(),
+    file: Some("./output.js".to_string()),
+    // dir: Some("./output.js".to_string()),
+    ..Default::default()
+  });
 
-  let output = bundle.generate();
-  std::fs::write("./output.js", output.clone()).unwrap();
-  log::debug!("output:\n{}", output);
+  println!("output:\n{:#?}", output);
+
 }
