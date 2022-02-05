@@ -41,6 +41,7 @@ impl Worker {
   pub fn run(&mut self) {
     if let Some(resolved_id) = self.fetch_job() {
       if resolved_id.external {
+        // TODO: external module
       } else {
         let mut module = Module::new(resolved_id.id.clone());
         let source = load(&resolved_id.id);
@@ -49,7 +50,6 @@ impl Worker {
 
         let mut scanner = Scanner::new(self.symbol_box.clone(), self.tx.clone());
         ast.visit_mut_with(&mut scanner);
-
         scanner.import_infos.iter().for_each(|(imported, info)| {
           let resolved_id = module.resolve_id(imported);
           self

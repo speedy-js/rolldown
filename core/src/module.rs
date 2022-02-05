@@ -4,6 +4,7 @@ use crate::statement::Statement;
 use crate::symbol_box::SymbolBox;
 use crate::utils::side_effect::SideEffect;
 use crate::utils::{ast_sugar, resolve_id};
+use dashmap::DashMap;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
@@ -33,12 +34,11 @@ pub struct Namespace {
   pub mark: Mark,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Module {
   // resolved_ids is using for caching.
-  pub resolved_ids: HashMap<JsWord, ResolvedId>,
+  pub resolved_ids: DashMap<JsWord, ResolvedId>,
   pub statements: Vec<Statement>,
-  pub appended_statments: Vec<Statement>,
   pub definations: HashMap<JsWord, usize>,
   pub id: SmolStr,
   pub local_exports: HashMap<JsWord, ExportDesc>,
@@ -58,7 +58,6 @@ impl Module {
     Self {
       definations: Default::default(),
       statements: Default::default(),
-      appended_statments: Default::default(),
       id,
       local_exports: Default::default(),
       re_export_all_sources: Default::default(),
@@ -185,11 +184,11 @@ impl Module {
     self.suggested_names.insert(name, suggested);
   }
 
-  pub fn resolve_id(&mut self, dep_src: &JsWord) -> ResolvedId {
+  pub fn resolve_id(&self, dep_src: &JsWord) -> ResolvedId {
     self
       .resolved_ids
       .entry(dep_src.clone())
-      .or_insert_with_key(|key| resolve_id(key, Some(&self.id), false))
+      .or_insert_with(|| resolve_id(dep_src, Some(&self.id), false))
       .clone()
   }
 
@@ -268,11 +267,6 @@ impl Module {
 
   pub fn render<W: WriteJs>(&self, emitter: &mut Emitter<'_, W>) {
     self.statements.iter().for_each(|stmt| {
-      if stmt.included {
-        emitter.emit_module_item(&stmt.node).unwrap();
-      }
-    });
-    self.appended_statments.iter().for_each(|stmt| {
       if stmt.included {
         emitter.emit_module_item(&stmt.node).unwrap();
       }

@@ -5,6 +5,7 @@ use std::{
   collections::{HashMap, HashSet},
   path::Path,
   sync::{Arc, Mutex},
+  time::Instant,
 };
 
 use crate::{
@@ -48,29 +49,22 @@ impl Chunk {
   }
 
   pub fn deconflict(&mut self, modules: &mut HashMap<SmolStr, Module>) {
+    let start = Instant::now();
+
     let mut used_names = HashSet::new();
     let mut mark_to_name = HashMap::new();
+
     let mut entry_first_modules = self
       .order_modules
       .iter()
       .map(|id| modules.get(id).unwrap())
       .collect::<Vec<_>>();
-    entry_first_modules.sort_by(|a, b| {
-      if a.is_user_defined_entry_point && !b.is_user_defined_entry_point {
-        Ordering::Less
-      } else if b.is_user_defined_entry_point && !a.is_user_defined_entry_point {
-        Ordering::Greater
-      } else {
-        Ordering::Equal
-      }
-    });
+
+    // Deconflict entry modules first.
+    entry_first_modules.sort_by_key(|a| !a.is_user_defined_entry_point);
+
     entry_first_modules.into_iter().for_each(|module| {
-      let mut declared_symbols = module.declared_symbols.iter().collect::<Vec<_>>();
-      // declared_symbols.sort_by(|a, b| {
-      //   a.0.cmp(b.0)
-      // });
-      // println!("declared_symbols {:#?}", declared_symbols.iter().map(|s| s.0.as_ref()).collect::<Vec<_>>());
-      declared_symbols.into_iter().for_each(|(name, mark)| {
+      module.declared_symbols.iter().for_each(|(name, mark)| {
         let root_mark = self.symbol_box.lock().unwrap().find_root(*mark);
         if mark_to_name.contains_key(&root_mark) {
         } else {
@@ -87,30 +81,39 @@ impl Chunk {
       });
     });
 
+    let rename_start = Instant::now();
+
     modules.par_iter_mut().for_each(|(_, module)| {
-      let mut renamer = Renamer {
-        mark_to_names: &mark_to_name,
-        symbox_box: self.symbol_box.clone(),
-      };
       module.statements.iter_mut().for_each(|stmt| {
-        stmt.node.visit_mut_with(&mut renamer);
-      });
-      module.appended_statments.iter_mut().for_each(|stmt| {
+        let mut renamer = Renamer {
+          mark_to_names: &mark_to_name,
+          symbox_box: self.symbol_box.clone(),
+        };
         stmt.node.visit_mut_with(&mut renamer);
       });
     });
 
+    println!(
+      "Chunk#deconflict()-rename finished in {}",
+      rename_start.elapsed().as_millis()
+    );
+
+    println!(
+      "Chunk#deconflict() finished in {}",
+      start.elapsed().as_millis()
+    );
+
     log::debug!("mark_to_name {:#?}", mark_to_name);
   }
-  
+
   pub fn render(
     &mut self,
     options: &NormalizedOutputOptions,
     modules: &mut HashMap<SmolStr, Module>,
   ) -> RenderedChunk {
     assert!(!self.id.is_empty());
-
-    // let modules = modules.par_iter_mut().map(|(key, module)| (key.clone(), module))
+    let prune_start = Instant::now();
+    let render_chunk_start = Instant::now();
     modules.par_iter_mut().for_each(|(_key, module)| {
       module.trim_exports();
       if module.is_user_defined_entry_point {
@@ -118,7 +121,14 @@ impl Chunk {
       }
     });
 
+    println!(
+      "prune modules finished in {}",
+      prune_start.elapsed().as_millis()
+    );
+
     self.deconflict(modules);
+
+    let emit_start = Instant::now();
 
     let mut output = Vec::new();
     let comments = SingleThreadedComments::default();
@@ -144,10 +154,22 @@ impl Chunk {
       }
     });
 
-    RenderedChunk {
+    let rendered_chunk = RenderedChunk {
       code: String::from_utf8(output).unwrap(),
       file_name: self.id.clone().into(),
-    }
+    };
+
+    println!(
+      "Chunk#render()-emit finished in {}",
+      emit_start.elapsed().as_millis()
+    );
+
+    println!(
+      "Chunk#render() finished in {}",
+      render_chunk_start.elapsed().as_millis()
+    );
+
+    rendered_chunk
   }
 
   pub fn get_chunk_info_with_file_names(&self) -> OutputChunk {

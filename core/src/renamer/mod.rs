@@ -6,9 +6,9 @@ use std::{
 use swc_common::{Mark, SyntaxContext};
 use swc_ecma_ast::{
   ExportNamedSpecifier, Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop,
-  PropName, PropOrSpread, ModuleExportName,
+  PropName, PropOrSpread, ModuleExportName, MemberExpr, Class, Param,
 };
-use swc_ecma_visit::{VisitMut, VisitMutWith};
+use swc_ecma_visit::{VisitMut, VisitMutWith, noop_visit_mut_type, VisitWith};
 
 use crate::{ext::SyntaxContextExt, symbol_box::SymbolBox};
 
@@ -19,6 +19,8 @@ pub struct Renamer<'me> {
 }
 
 impl<'me> VisitMut for Renamer<'me> {
+  noop_visit_mut_type!();
+
   fn visit_mut_import_decl(&mut self, _node: &mut ImportDecl) {
     // We won't remove import statement which import external module. So we need to consider following situation
     // ```a.js
@@ -79,4 +81,11 @@ impl<'me> VisitMut for Renamer<'me> {
       });
     node.visit_mut_children_with(self);
   }
+
+  fn visit_mut_member_expr(&mut self, node: &mut MemberExpr) {
+    // For a MemberExpr, AKA `a.b`, we only need to rename `a`;
+    node.obj.visit_mut_with(self);
+  }
+
+  // TODO: There are more AST nodes we could skip for Renamer. Just like `visit_mut_member_expr`.
 }

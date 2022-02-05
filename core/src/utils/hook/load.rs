@@ -1,3 +1,5 @@
+use std::{fs::File, io::Read};
+
 use crate::plugin_driver::PluginDriver;
 
 pub fn load(id: &str) -> String {

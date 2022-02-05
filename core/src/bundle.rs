@@ -18,27 +18,39 @@ impl Bundle {
     }
   }
 
-  pub fn generate(&mut self) -> HashMap<String, OutputChunk> {
-    let gen_start = Instant::now();
+  fn generate_chunks(&self) -> Vec<Chunk> {
+    let start = Instant::now();
 
     let entries = DashSet::new();
     self.graph.entry_indexs.iter().for_each(|entry| {
-      let entry = self.graph.graph[*entry].to_owned();
+      let entry = self.graph.module_graph[*entry].to_owned();
       entries.insert(entry);
     });
 
-    let mut chunks = vec![Chunk {
+    let chunks = vec![Chunk {
       id: Default::default(),
       order_modules: self
         .graph
         .ordered_modules
         .clone()
         .into_iter()
-        .map(|idx| self.graph.graph[idx].clone())
+        .map(|idx| self.graph.module_graph[idx].clone())
         .collect(),
       symbol_box: self.graph.symbol_box.clone(),
       entries,
     }];
+    println!(
+      "generate_chunks() finished in {}",
+      start.elapsed().as_millis()
+    );
+
+    chunks
+  }
+
+  pub fn generate(&mut self) -> HashMap<String, OutputChunk> {
+    let gen_start = Instant::now();
+
+    let mut chunks = self.generate_chunks();
 
     chunks.iter_mut().for_each(|chunk| {
       if let Some(file) = &self.output_options.file {
@@ -53,7 +65,8 @@ impl Bundle {
       .map(|chunk| chunk.render(&self.output_options, &mut self.graph.module_by_id))
       .collect::<Vec<_>>();
 
-    let output =  rendered_chunks
+
+    let output = rendered_chunks
       .into_iter()
       .map(|chunk| OutputChunk {
         file_name: chunk.file_name,
@@ -61,7 +74,7 @@ impl Bundle {
       })
       .map(|output_chunk| (output_chunk.file_name.clone(), output_chunk))
       .collect();
-      println!("generate() finished in {}", gen_start.elapsed().as_millis());
-      output
+    println!("generate() finished in {}", gen_start.elapsed().as_millis());
+    output
   }
 }

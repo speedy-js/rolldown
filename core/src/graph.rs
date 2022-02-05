@@ -36,12 +36,11 @@ type ModulePetGraph = petgraph::graph::DiGraph<SmolStr, Rel>;
 pub struct Graph {
   pub input_options: NormalizedInputOptions,
   resolved_entries: Vec<ResolvedId>,
-  pub graph: ModulePetGraph,
+  pub module_graph: ModulePetGraph,
   pub entry_indexs: Vec<NodeIndex>,
   pub ordered_modules: Vec<NodeIndex>,
   pub symbol_box: Arc<Mutex<SymbolBox>>,
   pub module_by_id: HashMap<SmolStr, Module>,
-  pub resolved_ids: HashMap<(Option<JsWord>, JsWord), ResolvedId>,
 }
 
 // Relation between modules
@@ -76,9 +75,8 @@ impl Graph {
       resolved_entries: Default::default(),
       entry_indexs: Default::default(),
       ordered_modules: Default::default(),
-      resolved_ids: Default::default(),
       module_by_id: Default::default(),
-      graph: ModulePetGraph::new(),
+      module_graph: ModulePetGraph::new(),
       symbol_box: Arc::new(Mutex::new(SymbolBox::new())),
     }
   }
@@ -92,6 +90,8 @@ impl Graph {
   }
   // build dependency graph via entry modules.
   fn generate_module_graph(&mut self) {
+    let start = Instant::now();
+
     let nums_of_thread = num_cpus::get();
     let idle_thread_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(nums_of_thread));
     let job_queue: Arc<SegQueue<ResolvedId>> = Default::default();
@@ -105,7 +105,7 @@ impl Graph {
     let mut path_to_node_idx: HashMap<SmolStr, NodeIndex> = Default::default();
 
     self.resolved_entries.iter().for_each(|resolved_entry_id| {
-      let entry_idx = self.graph.add_node(resolved_entry_id.id.clone());
+      let entry_idx = self.module_graph.add_node(resolved_entry_id.id.clone());
       self.entry_indexs.push(entry_idx);
       path_to_node_idx.insert(resolved_entry_id.id.clone(), entry_idx);
       job_queue.push(resolved_entry_id.clone());
@@ -151,11 +151,11 @@ impl Graph {
           Msg::DependencyReference(from, to, rel) => {
             let from_id = *path_to_node_idx
               .entry(from)
-              .or_insert_with_key(|key| self.graph.add_node(key.clone()));
+              .or_insert_with_key(|key| self.module_graph.add_node(key.clone()));
             let to_id = *path_to_node_idx
               .entry(to)
-              .or_insert_with_key(|key| self.graph.add_node(key.clone()));
-            self.graph.add_edge(from_id, to_id, rel);
+              .or_insert_with_key(|key| self.module_graph.add_node(key.clone()));
+            self.module_graph.add_edge(from_id, to_id, rel);
           }
           _ => {}
         }
@@ -165,11 +165,13 @@ impl Graph {
     let entries_id = self
       .entry_indexs
       .iter()
-      .map(|idx| &self.graph[*idx])
+      .map(|idx| &self.module_graph[*idx])
       .collect::<HashSet<&SmolStr>>();
     self.module_by_id.par_iter_mut().for_each(|(_key, module)| {
       module.is_user_defined_entry_point = entries_id.contains(&module.id);
     });
+
+    println!("generate_module_graph() finished in {}", start.elapsed().as_millis());
   }
 
   fn sort_modules(&mut self) {
@@ -181,7 +183,7 @@ impl Graph {
       if !visited.contains(&node_idx) {
         stack.push(node_idx);
         visited.insert(node_idx);
-        let edges = self.graph.edges_directed(node_idx, EdgeDirection::Outgoing);
+        let edges = self.module_graph.edges_directed(node_idx, EdgeDirection::Outgoing);
         let mut rels = edges.map(|e| e).collect::<Vec<_>>();
         rels.sort_by(|a, b| a.weight().get_order().cmp(&b.weight().get_order()));
         rels
@@ -207,10 +209,6 @@ impl Graph {
     self.generate_module_graph();
 
     self.sort_modules();
-    log::debug!(
-      "sort_modules finished in {}",
-      build_start.elapsed().as_millis()
-    );
 
     self.link_module_exports();
     self.link_module();
@@ -247,10 +245,10 @@ impl Graph {
             module.include_name(&name);
           });
       });
-      depth_first_search(&self.graph, self.entry_indexs.clone(), |evt| {
+      depth_first_search(&self.module_graph, self.entry_indexs.clone(), |evt| {
         match evt {
           DfsEvent::Discover(idx, _) => {
-            let edges = self.graph.edges_directed(idx, EdgeDirection::Outgoing);
+            let edges = self.module_graph.edges_directed(idx, EdgeDirection::Outgoing);
             edges.for_each(|edge| {
               let rel_info = match edge.weight() {
                 Rel::Import(info) => Some(info),
@@ -260,7 +258,7 @@ impl Graph {
               if let Some(rel_info) = rel_info {
                 let dep_module = self
                   .module_by_id
-                  .get_mut(&self.graph[edge.target()])
+                  .get_mut(&self.module_graph[edge.target()])
                   .unwrap();
 
                 rel_info.names.iter().for_each(|specifier| {
@@ -285,7 +283,7 @@ impl Graph {
 
   pub fn link_module_exports(&mut self) {
     self.ordered_modules.iter().for_each(|idx| {
-      let module_id = &self.graph[*idx];
+      let module_id = &self.module_graph[*idx];
       let module = self.module_by_id.get_mut(module_id).unwrap();
       // self.module_by_id.get_mut
       let dep_ids = module
@@ -317,12 +315,12 @@ impl Graph {
 
   pub fn link_module(&mut self) {
     self.ordered_modules.iter().for_each(|idx| {
-      let edges = self.graph.edges_directed(*idx, EdgeDirection::Outgoing);
+      let edges = self.module_graph.edges_directed(*idx, EdgeDirection::Outgoing);
       edges.for_each(|edge| {
         log::debug!(
           "[graph]: link module from {:?} to {:?}",
-          &self.graph[*idx],
-          &self.graph[edge.target()]
+          &self.module_graph[*idx],
+          &self.module_graph[edge.target()]
         );
         let rel_info = match edge.weight() {
           Rel::Import(info) => Some(info),
@@ -333,7 +331,7 @@ impl Graph {
           rel_info.names.iter().for_each(|specifier| {
             let module = self
               .module_by_id
-              .get_mut(&self.graph[edge.target()])
+              .get_mut(&self.module_graph[edge.target()])
               .unwrap();
             // import _default from './foo'
             // import * as foo from './foo
@@ -351,7 +349,7 @@ impl Graph {
 
             let dep_module = self
               .module_by_id
-              .get_mut(&self.graph[edge.target()])
+              .get_mut(&self.module_graph[edge.target()])
               .unwrap();
 
             if &specifier.original == "*" {
