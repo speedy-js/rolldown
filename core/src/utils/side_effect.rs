@@ -8,6 +8,7 @@ pub enum SideEffect {
   VisitThis,
   NonTopLevel,
   VisitGlobalVar,
+  ModuleDecl,
 }
 
 fn detect_side_effect_of_expr(expr: &Expr) -> Option<SideEffect> {
@@ -108,7 +109,7 @@ fn detect_side_effect_of_expr(expr: &Expr) -> Option<SideEffect> {
 // ESM environment
 pub fn detect_side_effect(item: &ModuleItem) -> Option<SideEffect> {
   match item {
-    ModuleItem::ModuleDecl(_) => None,
+    ModuleItem::ModuleDecl(_) => Some(SideEffect::ModuleDecl),
     ModuleItem::Stmt(stmt) => match stmt {
       // `{ }`
       Stmt::Block(_BlockStmt) => Some(SideEffect::NonTopLevel),

@@ -87,18 +87,13 @@ impl Module {
       .local_exports
       .iter()
       .for_each(|(_exported_name, export_desc)| {
-        let name = if let Some(default_exported_ident) = &export_desc.identifier {
-          default_exported_ident
-        } else {
-          // we need local_name. For `export { foo as bar }`, we need `foo` to bind references.
-          &export_desc.local_name
-        };
-        if name == "default" {
-          // This means that the module's `export default` is a value. No name to bind.
-          // And we need to generate a name for it lately.
+        let refernenced_name = export_desc.identifier.as_ref().unwrap_or(&export_desc.local_name);
+        if refernenced_name == "default" {
+          // This means that the module's `export default` is a value. Sush as `export default 1`
+          // No name to bind. And we need to generate a name for it lately.
           return;
         }
-        let symbol_mark = self.resolve_mark(name);
+        let symbol_mark = self.resolve_mark(refernenced_name);
         symbol_box.union(export_desc.mark, symbol_mark);
       });
   }
@@ -124,6 +119,7 @@ impl Module {
             .chain(stmt.writes.iter())
             .any(|name| !self.declared_symbols.contains_key(name));
           if has_unkown_name {
+            // TODO: Should do this in Scanner
             stmt.side_effect = Some(SideEffect::VisitGlobalVar)
           }
         }
@@ -231,7 +227,8 @@ impl Module {
         .unwrap_or_else(|| {
           (get_valid_name(nodejs_path::parse(&self.id).name) + "namespace").into()
         });
-      // TODO: we might need to check if the name already exsits.
+      // TODO: We should generate a name which has no conflict.
+      // TODO: We might need to check if the name already exsits.
       assert!(!self
         .declared_symbols
         .contains_key(&suggested_default_export_name));

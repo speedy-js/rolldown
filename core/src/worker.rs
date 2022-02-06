@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+  sync::{Arc, Mutex},
+  time::Instant,
+};
 
 use crossbeam::{channel::Sender, queue::SegQueue};
 use dashmap::DashSet;
@@ -43,13 +46,26 @@ impl Worker {
       if resolved_id.external {
         // TODO: external module
       } else {
+        let start = Instant::now();
+
         let mut module = Module::new(resolved_id.id.clone());
+        let load_start = Instant::now();
         let source = load(&resolved_id.id);
+        let load_end = load_start.elapsed().as_millis();
+        let parse_start = Instant::now();
         let mut ast = parse_file(source, &module.id);
+        let parse_end = parse_start.elapsed().as_millis();
+
+        let pre_analyze_start = Instant::now();
         self.pre_analyze_imported_module(&mut module, &ast);
+        let pre_analyze_end = pre_analyze_start.elapsed().as_millis();
 
         let mut scanner = Scanner::new(self.symbol_box.clone(), self.tx.clone());
+        let scanner_start = Instant::now();
         ast.visit_mut_with(&mut scanner);
+        let scanne_end = scanner_start.elapsed().as_millis();
+
+        let process_start = Instant::now();
         scanner.import_infos.iter().for_each(|(imported, info)| {
           let resolved_id = module.resolve_id(imported);
           self
@@ -117,6 +133,23 @@ impl Worker {
 
         log::debug!("[worker]: emit module {:#?}", module);
         self.tx.send(Msg::NewMod(module)).unwrap();
+
+        if start.elapsed().as_millis() > 100 {
+          println!("run()-load finished in {}", load_end,);
+          println!("run()-parse finished in {}", parse_end,);
+
+          println!("run()-pre_analyze finished in {}", pre_analyze_end,);
+          println!("run()-scanner finished in {}", scanne_end,);
+          println!(
+            "run()-process finished in {}",
+            process_start.elapsed().as_millis(),
+          );
+          println!(
+            "run() finished in {} for module {}",
+            start.elapsed().as_millis(),
+            resolved_id.id
+          );
+        }
       }
     }
   }

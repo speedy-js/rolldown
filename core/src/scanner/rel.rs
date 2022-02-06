@@ -119,7 +119,6 @@ impl Scanner {
           DefaultDecl::Fn(node) => node.ident.as_ref().map(|id| id.sym.clone()),
           _ => None,
         };
-        // TODO: what's the meaning of Mark for default export
         self.local_exports.insert(
           "default".into(),
           ExportDesc {

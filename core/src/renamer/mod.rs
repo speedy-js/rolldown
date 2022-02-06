@@ -22,7 +22,7 @@ impl<'me> VisitMut for Renamer<'me> {
   noop_visit_mut_type!();
 
   fn visit_mut_import_decl(&mut self, _node: &mut ImportDecl) {
-    // We won't remove import statement which import external module. So we need to consider following situation
+    // TODO: We won't remove import statement which import external module. So we need to consider following situation
     // ```a.js
     // import { useState } from 'react'
     // console.log(useState)
@@ -37,7 +37,6 @@ impl<'me> VisitMut for Renamer<'me> {
     // const useState = () => {}
     // useState()
     // ```
-    // TODO:
   }
 
   fn visit_mut_ident(&mut self, node: &mut Ident) {
