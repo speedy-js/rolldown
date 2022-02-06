@@ -85,6 +85,10 @@ impl<'me> VisitMut for Renamer<'me> {
   fn visit_mut_member_expr(&mut self, node: &mut MemberExpr) {
     // For a MemberExpr, AKA `a.b`, we only need to rename `a`;
     node.obj.visit_mut_with(self);
+    if node.prop.is_computed() {
+      // Handle `a[b]`
+      node.prop.visit_mut_with(self);
+    }
   }
 
   // TODO: There are more AST nodes we could skip for Renamer. Just like `visit_mut_member_expr`.

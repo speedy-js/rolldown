@@ -12,9 +12,8 @@ pub(crate) static SYMBOL_GLOBALS: Lazy<Globals> = Lazy::new(|| Globals::new());
 
 impl SymbolBox {
   pub fn new() -> Self {
-    let globals = Globals::new();
     let mut mark_uf: InPlaceUnificationTable<MarkIndex> = Default::default();
-    GLOBALS.set(&globals, || {
+    GLOBALS.set(&SYMBOL_GLOBALS, || {
       // Mark(0) is a special mark in SWC. we need to drop it.
       mark_uf.new_key(());
     });
