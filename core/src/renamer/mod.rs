@@ -6,9 +6,9 @@ use std::{
 use swc_common::{Mark, SyntaxContext};
 use swc_ecma_ast::{
   ExportNamedSpecifier, Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop,
-  PropName, PropOrSpread, ModuleExportName, MemberExpr, Class, Param,
+  PropName, PropOrSpread, ModuleExportName, MemberExpr,
 };
-use swc_ecma_visit::{VisitMut, VisitMutWith, noop_visit_mut_type, VisitWith};
+use swc_ecma_visit::{VisitMut, VisitMutWith, noop_visit_mut_type};
 
 use crate::{ext::SyntaxContextExt, symbol_box::SymbolBox};
 

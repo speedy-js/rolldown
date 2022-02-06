@@ -1,7 +1,6 @@
 use dashmap::DashSet;
 use smol_str::SmolStr;
 use std::{
-  cmp::Ordering,
   collections::{HashMap, HashSet},
   path::Path,
   sync::{Arc, Mutex},
@@ -18,12 +17,11 @@ use crate::{
 };
 
 use rayon::prelude::*;
-use swc_atoms::JsWord;
+
 use swc_common::{
-  comments::{Comment, CommentKind, Comments, SingleThreadedComments},
-  Mark, SyntaxContext, DUMMY_SP,
+  comments::{SingleThreadedComments},
 };
-use swc_ecma_ast::{EmptyStmt, EsVersion, ModuleItem, Stmt};
+use swc_ecma_ast::{EsVersion};
 use swc_ecma_codegen::text_writer::JsWriter;
 use swc_ecma_visit::VisitMutWith;
 

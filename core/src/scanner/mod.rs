@@ -7,12 +7,12 @@ use std::{
 use swc_atoms::JsWord;
 use swc_ecma_ast::{
   ArrowExpr, BindingIdent, BlockStmt, BlockStmtOrExpr, CallExpr, CatchClause, ClassDecl, ClassExpr,
-  ClassMethod, ClassProp, Constructor, Decl, DefaultDecl, ExportDefaultDecl, Expr, ExprStmt,
+  ClassMethod, ClassProp, Constructor, Decl, DefaultDecl, ExportDefaultDecl, Expr,
   FnDecl, FnExpr, ForInStmt, ForOfStmt, ForStmt, Function, Ident, ImportDecl, ImportNamedSpecifier,
   MemberExpr, MethodProp, ModuleDecl, ModuleItem, ObjectLit, Param, Pat, PatOrExpr, PrivateMethod,
   SetterProp, Stmt, TaggedTpl, Tpl, VarDecl, VarDeclarator,
 };
-use swc_ecma_visit::{noop_visit_mut_type, VisitAllWith, VisitMut, VisitMutWith};
+use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
 use crate::{ext::MarkExt, graph::Msg, symbol_box::SymbolBox, utils::side_effect::{detect_side_effect, SideEffect}};
 

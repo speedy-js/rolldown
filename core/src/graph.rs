@@ -14,17 +14,17 @@ use crossbeam::{
 use dashmap::DashSet;
 use petgraph::{
   graph::NodeIndex,
-  visit::{depth_first_search, DfsEvent, DfsPostOrder, EdgeRef},
+  visit::{depth_first_search, DfsEvent, EdgeRef},
   EdgeDirection,
 };
 use rayon::prelude::*;
 use smol_str::SmolStr;
-use swc_atoms::JsWord;
+
 
 use crate::{
   external_module::ExternalModule,
   module::Module,
-  scanner::rel::{self, RelationInfo},
+  scanner::rel::{RelationInfo},
   symbol_box::SymbolBox,
   types::{NormalizedInputOptions, ResolvedId},
   utils::resolve_id,

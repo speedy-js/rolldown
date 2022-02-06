@@ -1,4 +1,4 @@
-use rolldown::{graph::Graph, bundle::Bundle};
+use rolldown::{graph::Graph};
 
 #[test]
 fn basic() {
