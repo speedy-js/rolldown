@@ -1,4 +1,4 @@
-use swc_ecma_ast::{Expr, ModuleItem, PatOrExpr, Stmt};
+use swc_ecma_ast::{Expr, ModuleItem, PatOrExpr, Stmt, ModuleDecl};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SideEffect {
@@ -8,7 +8,7 @@ pub enum SideEffect {
   VisitThis,
   NonTopLevel,
   VisitGlobalVar,
-  ModuleDecl,
+  Import,
 }
 
 fn detect_side_effect_of_expr(expr: &Expr) -> Option<SideEffect> {
@@ -109,7 +109,7 @@ fn detect_side_effect_of_expr(expr: &Expr) -> Option<SideEffect> {
 // ESM environment
 pub fn detect_side_effect(item: &ModuleItem) -> Option<SideEffect> {
   match item {
-    ModuleItem::ModuleDecl(_) => Some(SideEffect::ModuleDecl),
+    ModuleItem::ModuleDecl(ModuleDecl::Import(_)) => Some(SideEffect::Import),
     ModuleItem::Stmt(stmt) => match stmt {
       // `{ }`
       Stmt::Block(_BlockStmt) => Some(SideEffect::NonTopLevel),
@@ -147,5 +147,6 @@ pub fn detect_side_effect(item: &ModuleItem) -> Option<SideEffect> {
       Stmt::Decl(_Decl) => None,
       Stmt::Expr(ExprStmt) => detect_side_effect_of_expr(ExprStmt.expr.as_ref()),
     },
+    _ => None,
   }
 }
