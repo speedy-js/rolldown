@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::scanner::{ModuleItemInfo};
+use crate::scanner::ModuleItemInfo;
 use crate::statement::Statement;
 use crate::symbol_box::SymbolBox;
 use crate::utils::side_effect::SideEffect;
@@ -87,7 +87,10 @@ impl Module {
       .local_exports
       .iter()
       .for_each(|(_exported_name, export_desc)| {
-        let refernenced_name = export_desc.identifier.as_ref().unwrap_or(&export_desc.local_name);
+        let refernenced_name = export_desc
+          .identifier
+          .as_ref()
+          .unwrap_or(&export_desc.local_name);
         if refernenced_name == "default" {
           // This means that the module's `export default` is a value. Sush as `export default 1`
           // No name to bind. And we need to generate a name for it lately.
@@ -159,7 +162,7 @@ impl Module {
           stmt.include();
           stmt
         })
-        .flat_map(|stmt| vec![&stmt.declared, &stmt.reads, &stmt.writes])
+        .flat_map(|stmt| vec![&stmt.reads, &stmt.writes])
         .flatten()
         .filter_map(|name| self.definations.get(name))
         .cloned()
