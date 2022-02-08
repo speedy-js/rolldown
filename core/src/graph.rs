@@ -20,11 +20,10 @@ use petgraph::{
 use rayon::prelude::*;
 use smol_str::SmolStr;
 
-
 use crate::{
   external_module::ExternalModule,
   module::Module,
-  scanner::rel::{RelationInfo},
+  scanner::rel::RelationInfo,
   symbol_box::SymbolBox,
   types::{NormalizedInputOptions, ResolvedId},
   utils::resolve_id,
@@ -171,7 +170,10 @@ impl Graph {
       module.is_user_defined_entry_point = entries_id.contains(&module.id);
     });
 
-    println!("generate_module_graph() finished in {}", start.elapsed().as_millis());
+    println!(
+      "generate_module_graph() finished in {}",
+      start.elapsed().as_millis()
+    );
   }
 
   fn sort_modules(&mut self) {
@@ -183,8 +185,10 @@ impl Graph {
       if !visited.contains(&node_idx) {
         stack.push(node_idx);
         visited.insert(node_idx);
-        let edges = self.module_graph.edges_directed(node_idx, EdgeDirection::Outgoing);
-        let mut rels = edges.map(|e| e).collect::<Vec<_>>();
+        let edges = self
+          .module_graph
+          .edges_directed(node_idx, EdgeDirection::Outgoing);
+        let mut rels = edges.collect::<Vec<_>>();
         rels.sort_by(|a, b| a.weight().get_order().cmp(&b.weight().get_order()));
         rels
           .into_iter()
@@ -248,7 +252,9 @@ impl Graph {
       depth_first_search(&self.module_graph, self.entry_indexs.clone(), |evt| {
         match evt {
           DfsEvent::Discover(idx, _) => {
-            let edges = self.module_graph.edges_directed(idx, EdgeDirection::Outgoing);
+            let edges = self
+              .module_graph
+              .edges_directed(idx, EdgeDirection::Outgoing);
             edges.for_each(|edge| {
               let rel_info = match edge.weight() {
                 Rel::Import(info) => Some(info),
@@ -284,7 +290,7 @@ impl Graph {
   pub fn link_module_exports(&mut self) {
     self.ordered_modules.iter().for_each(|idx| {
       let module_id = &self.module_graph[*idx];
-      let module = self.module_by_id.get_mut(module_id).unwrap();
+      let module = self.module_by_id.get(module_id).unwrap();
       // self.module_by_id.get_mut
       let dep_ids = module
         .re_export_all_sources
@@ -315,7 +321,9 @@ impl Graph {
 
   pub fn link_module(&mut self) {
     self.ordered_modules.iter().for_each(|idx| {
-      let edges = self.module_graph.edges_directed(*idx, EdgeDirection::Outgoing);
+      let edges = self
+        .module_graph
+        .edges_directed(*idx, EdgeDirection::Outgoing);
       edges.for_each(|edge| {
         log::debug!(
           "[graph]: link module from {:?} to {:?}",
@@ -329,7 +337,7 @@ impl Graph {
         };
         if let Some(rel_info) = rel_info {
           rel_info.names.iter().for_each(|specifier| {
-            let module = self
+            let dep_module = self
               .module_by_id
               .get_mut(&self.module_graph[edge.target()])
               .unwrap();
@@ -337,20 +345,15 @@ impl Graph {
             // import * as foo from './foo
             // export * as foo from './foo
             if &specifier.original == "default" || &specifier.original == "*" {
-              module.suggest_name(specifier.original.clone(), specifier.used.clone());
+              dep_module.suggest_name(specifier.original.clone(), specifier.used.clone());
             }
 
             log::debug!(
               "[graph]: link imported `{:?}` to exported {} in {}",
               specifier.used,
               specifier.original,
-              module.id
+              dep_module.id
             );
-
-            let dep_module = self
-              .module_by_id
-              .get_mut(&self.module_graph[edge.target()])
-              .unwrap();
 
             if &specifier.original == "*" {
               // REFACTOR

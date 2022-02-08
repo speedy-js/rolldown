@@ -125,7 +125,7 @@ impl Worker {
         }
         module.namespace.mark = self.symbol_box.lock().unwrap().new_mark();
 
-        module.set_ast(ast.clone(), scanner.statement_infos);
+        module.set_statements(ast.clone(), scanner.statement_infos);
 
         module.bind_local_references(&mut self.symbol_box.lock().unwrap());
 

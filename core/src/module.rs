@@ -101,7 +101,7 @@ impl Module {
       });
   }
 
-  pub fn set_ast(&mut self, ast: ast::Module, module_item_infos: Vec<ModuleItemInfo>) {
+  pub fn set_statements(&mut self, ast: ast::Module, module_item_infos: Vec<ModuleItemInfo>) {
     self.statements = ast
       .body
       .into_iter()
@@ -116,12 +116,12 @@ impl Module {
         stmt.reads = info.reads;
         stmt.side_effect = info.side_effect;
         if stmt.side_effect.is_none() {
-          let has_unkown_name = stmt
+          let has_unknown_name = stmt
             .reads
             .iter()
             .chain(stmt.writes.iter())
             .any(|name| !self.declared_symbols.contains_key(name));
-          if has_unkown_name {
+          if has_unknown_name {
             // TODO: Should do this in Scanner
             stmt.side_effect = Some(SideEffect::VisitGlobalVar)
           }
