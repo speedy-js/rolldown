@@ -7,14 +7,19 @@ use std::{
 use swc_atoms::JsWord;
 use swc_ecma_ast::{
   ArrowExpr, BindingIdent, BlockStmt, BlockStmtOrExpr, CallExpr, CatchClause, ClassDecl, ClassExpr,
-  ClassMethod, ClassProp, Constructor, Decl, DefaultDecl, ExportDefaultDecl, Expr,
-  FnDecl, FnExpr, ForInStmt, ForOfStmt, ForStmt, Function, Ident, ImportDecl, ImportNamedSpecifier,
-  MemberExpr, MethodProp, ModuleDecl, ModuleItem, ObjectLit, Param, Pat, PatOrExpr, PrivateMethod,
-  SetterProp, Stmt, TaggedTpl, Tpl, VarDecl, VarDeclarator,
+  ClassMethod, ClassProp, Constructor, Decl, DefaultDecl, ExportDefaultDecl, Expr, FnDecl, FnExpr,
+  ForInStmt, ForOfStmt, ForStmt, Function, Ident, ImportDecl, ImportNamedSpecifier, MemberExpr,
+  MethodProp, ModuleDecl, ModuleItem, ObjectLit, Param, Pat, PatOrExpr, PrivateMethod, SetterProp,
+  Stmt, TaggedTpl, Tpl, VarDecl, VarDeclarator,
 };
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
-use crate::{ext::MarkExt, graph::Msg, symbol_box::SymbolBox, utils::side_effect::{detect_side_effect, SideEffect}};
+use crate::{
+  ext::MarkExt,
+  graph::Msg,
+  symbol_box::SymbolBox,
+  utils::side_effect::{detect_side_effect, SideEffect},
+};
 
 use self::{
   rel::RelationInfo,
@@ -26,7 +31,6 @@ pub mod rel;
 pub mod scope;
 mod symbol;
 use rel::{DynImportDesc, ExportDesc, ReExportDesc};
-
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ModuleItemInfo {
@@ -114,7 +118,6 @@ impl Scanner {
         .declared_symbols_kind
         .insert(declared_name.clone(), kind);
       scope.declared_symbols.insert(declared_name.clone(), mark);
-      scope.declared_symbols.insert(id.sym.clone(), mark);
       id.span.ctxt = mark.as_ctxt();
 
       let module_item_info = &mut self.statement_infos[self.cur_stmt_index];
