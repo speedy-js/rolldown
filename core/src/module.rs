@@ -196,6 +196,7 @@ impl Module {
       self
         .imported_symbols
         .get(name)
+        // TODO: how can we support global exports? such as `export { Math }`
         .expect(&format!("unkown name: {:?} for module {}", name, self.id))
     })
   }
