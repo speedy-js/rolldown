@@ -18,10 +18,8 @@ use crate::{
 
 use rayon::prelude::*;
 
-use swc_common::{
-  comments::{SingleThreadedComments},
-};
-use swc_ecma_ast::{EsVersion};
+use swc_common::comments::SingleThreadedComments;
+use swc_ecma_ast::EsVersion;
 use swc_ecma_codegen::text_writer::JsWriter;
 use swc_ecma_visit::VisitMutWith;
 
@@ -52,16 +50,15 @@ impl Chunk {
     let mut used_names = HashSet::new();
     let mut mark_to_name = HashMap::new();
 
-    let mut entry_first_modules = self
+    // Deconflict from the entry module to keep namings as simple as possible
+    let mut reverse_ordered_modules = self
       .order_modules
       .iter()
       .map(|id| modules.get(id).unwrap())
+      .rev()
       .collect::<Vec<_>>();
 
-    // Deconflict entry modules first.
-    entry_first_modules.sort_by_key(|a| !a.is_user_defined_entry_point);
-
-    entry_first_modules.into_iter().for_each(|module| {
+    reverse_ordered_modules.into_iter().for_each(|module| {
       module.declared_symbols.iter().for_each(|(name, mark)| {
         let root_mark = self.symbol_box.lock().unwrap().find_root(*mark);
         if mark_to_name.contains_key(&root_mark) {
