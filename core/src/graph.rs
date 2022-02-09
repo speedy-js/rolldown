@@ -11,7 +11,7 @@ use crossbeam::{
   channel::{self},
   queue::SegQueue,
 };
-use dashmap::DashSet;
+use dashmap::{DashMap, DashSet};
 use petgraph::{
   graph::NodeIndex,
   visit::{depth_first_search, DfsEvent, EdgeRef},
@@ -19,7 +19,10 @@ use petgraph::{
 };
 use rayon::prelude::*;
 use smol_str::SmolStr;
+use swc_atoms::JsWord;
+use swc_common::Mark;
 
+use crate::ext::MarkExt;
 use crate::{
   external_module::ExternalModule,
   module::Module,
@@ -40,6 +43,7 @@ pub struct Graph {
   pub ordered_modules: Vec<NodeIndex>,
   pub symbol_box: Arc<Mutex<SymbolBox>>,
   pub module_by_id: HashMap<SmolStr, Module>,
+  pub mark_to_stmt: Arc<DashMap<Mark, (SmolStr, usize)>>,
 }
 
 // Relation between modules
@@ -77,6 +81,7 @@ impl Graph {
       module_by_id: Default::default(),
       module_graph: ModulePetGraph::new(),
       symbol_box: Arc::new(Mutex::new(SymbolBox::new())),
+      mark_to_stmt: Default::default(),
     }
   }
 
@@ -121,6 +126,7 @@ impl Graph {
         job_queue: job_queue.clone(),
         processed_id: processed_id.clone(),
         symbol_box: self.symbol_box.clone(),
+        mark_to_stmt: self.mark_to_stmt.clone(),
       };
       std::thread::spawn(move || loop {
         idle_thread_count.fetch_sub(1, Ordering::SeqCst);
@@ -223,6 +229,7 @@ impl Graph {
 
   pub fn include(&mut self) {
     let treeshake = self.input_options.treeshake;
+    log::debug!("mark to stmt {:#?}", self.mark_to_stmt);
     self.module_by_id.par_iter_mut().for_each(|(id, module)| {
       log::debug!(
         "[treeshake]: with treeshake: {:?}, include all module's side effect stmt for {:?}",
@@ -231,6 +238,7 @@ impl Graph {
       );
       module.include(treeshake);
     });
+
     if treeshake {
       self.resolved_entries.iter().for_each(|resolved_id| {
         log::debug!(
@@ -241,46 +249,31 @@ impl Graph {
         module
           .local_exports
           .values()
-          .map(|desc| &desc.local_name)
-          .cloned()
+          .map(|desc| (desc.local_name.clone(), desc.mark.clone()))
           .collect::<Vec<_>>()
           .into_iter()
-          .for_each(|name| {
-            module.include_name(&name);
+          .for_each(|(name, mark)| {
+            module.include_mark(&name, &mark);
           });
       });
-      depth_first_search(&self.module_graph, self.entry_indexs.clone(), |evt| {
-        match evt {
-          DfsEvent::Discover(idx, _) => {
-            let edges = self
-              .module_graph
-              .edges_directed(idx, EdgeDirection::Outgoing);
-            edges.for_each(|edge| {
-              let rel_info = match edge.weight() {
-                Rel::Import(info) => Some(info),
-                Rel::ReExport(info) => Some(info),
-                _ => None,
-              };
-              println!("{:#?}", rel_info);
-              if let Some(rel_info) = rel_info {
-                let dep_module = self
-                  .module_by_id
-                  .get_mut(&self.module_graph[edge.target()])
-                  .unwrap();
 
-                rel_info.names.iter().for_each(|specifier| {
-                  if &specifier.original == "*" {
-                    // REFACTOR
-                    dep_module.include_namespace();
-                  } else {
-                    // REFACTOR
-                    dep_module.include_name(&specifier.original);
-                  }
-                })
-              }
-            });
-          }
-          _ => {}
+      let read_marks = self
+        .module_by_id
+        .iter()
+        .flat_map(|(id, module)| module.statements.iter().flat_map(|stmt| stmt.reads.iter()))
+        .cloned()
+        .collect::<Vec<_>>();
+
+      read_marks.into_iter().for_each(|mark| {
+        let from_root_mark = self.symbol_box.lock().unwrap().find_root(mark);
+        if let Some(pair) = self.mark_to_stmt.iter().find(|pair| {
+          let key = pair.key();
+          let dest_root_mark = self.symbol_box.lock().unwrap().find_root(key.clone());
+          from_root_mark == dest_root_mark
+        }) {
+          let (module_id, idx) = pair.value();
+          let stmt = &mut self.module_by_id.get_mut(module_id).unwrap().statements[*idx];
+          stmt.include()
         }
       });
     }
@@ -358,7 +351,7 @@ impl Graph {
 
             if &specifier.original == "*" {
               // REFACTOR
-              dep_module.include_namespace();
+              dep_module.include_namespace(self.mark_to_stmt);
             }
 
             let dep_module_exported_mark = dep_module

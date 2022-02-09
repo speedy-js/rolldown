@@ -1,3 +1,4 @@
-import foo from "./foo"
+import foo, { bar } from "./foo"
+import * as ns from "./namespace"
 
-console.log(foo)
+console.log(foo, bar, ns.a)
