@@ -261,6 +261,7 @@ impl Graph {
                 Rel::ReExport(info) => Some(info),
                 _ => None,
               };
+              println!("{:#?}", rel_info);
               if let Some(rel_info) = rel_info {
                 let dep_module = self
                   .module_by_id

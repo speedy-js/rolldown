@@ -135,7 +135,24 @@ impl Module {
   pub fn include_name(&mut self, name: &JsWord) {
     if let Some(stmt_idx) = self.definations.get(name).map(|s| *s) {
       let stmt = &mut self.statements[stmt_idx];
-      if !stmt.included {
+      stmt.include();
+      log::debug!("include_name {}", name);
+      stmt
+        .reads
+        .iter()
+        .chain(stmt.writes.iter())
+        .cloned()
+        .collect::<HashSet<_>>()
+        .iter()
+        .for_each(|name| self.include_name(name));
+    } else if self.local_exports.get(name).is_some() {
+      let export_default_stmt = self.statements.iter_mut().find(|stmt| {
+        matches!(
+          stmt.node,
+          ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(_))
+        )
+      });
+      if let Some(stmt) = export_default_stmt {
         stmt.include();
         log::debug!("include_name {}", name);
         stmt
