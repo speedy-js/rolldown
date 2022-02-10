@@ -267,12 +267,20 @@ impl Graph {
       read_marks.into_iter().for_each(|mark| {
         let from_root_mark = self.symbol_box.lock().unwrap().find_root(mark);
         if let Some(pair) = self.mark_to_stmt.iter().find(|pair| {
-          let key = pair.key();
-          let dest_root_mark = self.symbol_box.lock().unwrap().find_root(key.clone());
+          let dest_root_mark = self.symbol_box.lock().unwrap().find_root(*pair.key());
           from_root_mark == dest_root_mark
         }) {
+          // TODO: fix namespace import, currently with demo `namespace` is sometimes not working as intended
+          // as the order matters and set_statements is orderless
           let (module_id, idx) = pair.value();
-          let stmt = &mut self.module_by_id.get_mut(module_id).unwrap().statements[*idx];
+          let module = self.module_by_id.get_mut(module_id).unwrap();
+          let stmt = &mut module.statements[*idx];
+          log::debug!(
+            "[treeshake]: module id: {} stmts: {:#?}",
+            module_id.as_str(),
+            stmt,
+          );
+          log::debug!("[treeshake]: include statement {:#?}", stmt.node.clone());
           stmt.include()
         }
       });
@@ -351,7 +359,7 @@ impl Graph {
 
             if &specifier.original == "*" {
               // REFACTOR
-              dep_module.include_namespace(self.symbol_box.clone(), self.mark_to_stmt.clone());
+              dep_module.include_namespace(self.mark_to_stmt.clone());
             }
 
             let dep_module_exported_mark = dep_module

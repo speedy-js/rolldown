@@ -115,6 +115,14 @@ impl Module {
       .zip(module_item_infos.into_iter())
       .enumerate()
       .map(|(idx, (node, info))| {
+        let is_decl_or_stmt = matches!(
+          node,
+          ModuleItem::ModuleDecl(
+            ModuleDecl::ExportDecl(_)
+              | ModuleDecl::ExportDefaultExpr(_)
+              | ModuleDecl::ExportDefaultDecl(_)
+          ) | ModuleItem::Stmt(_)
+        );
         let mut stmt = Statement::new(node);
         if let Some(export_mark) = info.export_mark {
           mark_to_stmt
@@ -123,9 +131,13 @@ impl Module {
         }
         info.declared.iter().for_each(|(name, mark)| {
           self.definitions.insert(name.clone(), idx);
-          mark_to_stmt
-            .entry(mark.clone())
-            .or_insert_with(|| (self.id.clone(), idx));
+
+          // Skip declarations brought by `import`
+          if is_decl_or_stmt {
+            mark_to_stmt
+              .entry(mark.clone())
+              .or_insert_with(|| (self.id.clone(), idx));
+          }
         });
         stmt.writes = info.writes;
         stmt.reads = info.reads;
@@ -149,6 +161,11 @@ impl Module {
   }
 
   pub fn include_mark(&mut self, name: &JsWord, mark: &Mark) {
+    log::debug!(
+      "[treeshake]: definition `{}` included in `{}`",
+      &name,
+      self.id
+    );
     if let Some(&stmt_idx) = self.definitions.get(name) {
       let stmt = &mut self.statements[stmt_idx];
       stmt.reads.insert(mark.clone());
@@ -214,11 +231,7 @@ impl Module {
     }
   }
 
-  pub fn include_namespace(
-    &mut self,
-    symbol_box: Arc<Mutex<SymbolBox>>,
-    mark_to_stmt: Arc<DashMap<Mark, (SmolStr, usize)>>,
-  ) {
+  pub fn include_namespace(&mut self, mark_to_stmt: Arc<DashMap<Mark, (SmolStr, usize)>>) {
     if !self.namespace.included {
       let suggested_default_export_name = self
         .suggested_names

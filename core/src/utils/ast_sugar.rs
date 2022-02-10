@@ -12,7 +12,7 @@ use crate::ext::MarkExt;
 
 #[inline]
 fn jsword(s: &str) -> JsWord {
-  s.to_owned().into()
+  s.into()
 }
 
 #[inline]
@@ -78,9 +78,7 @@ pub fn export(exports: &HashMap<JsWord, Mark>) -> ModuleDecl {
 
 pub fn namespace(var_name: (JsWord, Mark), key_values: &HashMap<JsWord, Mark>) -> Stmt {
   let mut key_values = key_values.into_iter().collect::<Vec<_>>();
-  key_values.sort_by(|a, b| {
-    a.0.cmp(b.0)
-  });
+  key_values.sort_by(|a, b| a.0.cmp(b.0));
   let mut props = vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
     key: PropName::Str(str("__proto__")),
     value: Box::new(Expr::Lit(Lit::Null(Null::dummy()))),
