@@ -23,7 +23,8 @@ fn main() {
   //   GraphContainer::from_single_entry("../node_modules/lodash-es/lodash.js".to_owned());
   let rolldown_build = RolldownBuild::new(NormalizedInputOptions {
     input: vec![
-      "./tests/fixtures/tree-shaking-advanced/index.js".to_owned()
+      // "./tests/fixtures/tree-shaking-advanced/index.js".to_owned(),
+      "./tests/fixtures/namespace/index.js".to_owned(),
       // "../../three.js/src/Three.js".to_owned(),
       // "./tests/fixtures/preact/index.js".to_owned(),
       // "./tests/fixtures/tree-shaking/index.js".to_owned(),

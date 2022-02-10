@@ -8,7 +8,7 @@ use dashmap::DashMap;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::{collections::HashSet, hash::Hash};
 
 use ast::{
@@ -214,7 +214,11 @@ impl Module {
     }
   }
 
-  pub fn include_namespace(&mut self, mark_to_stmt: Arc<DashMap<Mark, (SmolStr, usize)>>) {
+  pub fn include_namespace(
+    &mut self,
+    symbol_box: Arc<Mutex<SymbolBox>>,
+    mark_to_stmt: Arc<DashMap<Mark, (SmolStr, usize)>>,
+  ) {
     if !self.namespace.included {
       let suggested_default_export_name = self
         .suggested_names
@@ -228,33 +232,31 @@ impl Module {
       assert!(!self
         .declared_symbols
         .contains_key(&suggested_default_export_name));
-      // mark_to_stmt
-      //   .entry(self.namespace.mark.clone())
-      //   .or_insert_with(|| (self.id.clone(),));
       self.local_exports.insert(
-        "*".to_string().into(),
+        "*".into(),
         ExportDesc {
           identifier: None,
-          mark: self.namespace.mark,
+          mark: self.namespace.mark.clone(),
           local_name: suggested_default_export_name.clone(),
         },
       );
-      self
-        .exports
-        .insert("*".to_string().into(), self.namespace.mark);
+      self.exports.insert("*".into(), self.namespace.mark);
       let namespace = ast_sugar::namespace(
         (suggested_default_export_name.clone(), self.namespace.mark),
         &self.exports,
       );
       let mut s = Statement::new(ast::ModuleItem::Stmt(namespace.clone()));
-      s.include();
       let idx = self.statements.len();
       self
         .definitions
         .insert(suggested_default_export_name.clone(), idx);
       s.declared
         .entry(suggested_default_export_name.clone())
-        .or_insert_with(|| self.namespace.mark.clone());
+        .or_insert_with(|| self.namespace.mark);
+
+      mark_to_stmt
+        .entry(self.namespace.mark)
+        .or_insert_with(|| (self.id.clone(), idx));
       self.statements.push(s);
       self
         .declared_symbols

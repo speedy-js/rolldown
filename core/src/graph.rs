@@ -351,7 +351,7 @@ impl Graph {
 
             if &specifier.original == "*" {
               // REFACTOR
-              dep_module.include_namespace(self.mark_to_stmt);
+              dep_module.include_namespace(self.symbol_box.clone(), self.mark_to_stmt.clone());
             }
 
             let dep_module_exported_mark = dep_module
