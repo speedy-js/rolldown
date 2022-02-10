@@ -1,6 +1,7 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use swc_atoms::JsWord;
+use swc_common::Mark;
 use swc_ecma_ast::ModuleItem;
 
 use crate::utils::side_effect::SideEffect;
@@ -9,9 +10,9 @@ use crate::utils::side_effect::SideEffect;
 pub struct Statement {
   pub node: ModuleItem,
   pub included: bool,
-  pub declared: HashSet<JsWord>,
-  pub reads: HashSet<JsWord>,
-  pub writes: HashSet<JsWord>,
+  pub declared: HashMap<JsWord, Mark>,
+  pub reads: HashSet<Mark>,
+  pub writes: HashSet<Mark>,
   pub side_effect: Option<SideEffect>,
 }
 

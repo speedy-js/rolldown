@@ -5,6 +5,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 use swc_atoms::JsWord;
+use swc_common::Mark;
 use swc_ecma_ast::{
   ArrowExpr, BindingIdent, BlockStmt, BlockStmtOrExpr, CallExpr, CatchClause, ClassDecl, ClassExpr,
   ClassMethod, ClassProp, Constructor, Decl, DefaultDecl, ExportDefaultDecl, Expr, FnDecl, FnExpr,
@@ -34,10 +35,12 @@ use rel::{DynImportDesc, ExportDesc, ReExportDesc};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ModuleItemInfo {
-  pub declared: HashSet<JsWord>,
-  pub reads: HashSet<JsWord>,
-  pub writes: HashSet<JsWord>,
+  pub declared: HashMap<JsWord, Mark>,
+  pub reads: HashSet<Mark>,
+  pub writes: HashSet<Mark>,
   pub side_effect: Option<SideEffect>,
+  // TODO: should we place it here?
+  pub export_mark: Option<Mark>,
 }
 
 // Declare symbols
@@ -123,7 +126,10 @@ impl Scanner {
       let module_item_info = &mut self.statement_infos[self.cur_stmt_index];
       if is_root_scope {
         // TODO: duplicate detect
-        module_item_info.declared.insert(id.sym.clone());
+        module_item_info
+          .declared
+          .entry(id.sym.clone())
+          .or_insert_with(|| mark.clone());
       };
     }
   }
@@ -138,15 +144,16 @@ impl Scanner {
         if is_root_scope {
           let stmt_info = &mut self.statement_infos[self.cur_stmt_index];
           // TODO: duplicate detect
-          stmt_info.reads.insert(ident.sym.clone());
+          stmt_info.reads.insert(mark.clone());
         }
         break;
       };
     }
-    if !is_finded {
-      let stmt_info = &mut self.statement_infos[self.cur_stmt_index];
-      stmt_info.reads.insert(ident.sym.clone());
-    }
+    // TODO: should we add this as it does not reflect in the bundle itself, or maybe we can do it elsewhere.
+    // if !is_finded {
+    //   let stmt_info = &mut self.statement_infos[self.cur_stmt_index];
+    //   stmt_info.reads.insert(ident.sym.clone());
+    // }
   }
 
   fn visit_mut_stmt_within_child_scope(&mut self, s: &mut Stmt) {

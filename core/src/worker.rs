@@ -4,10 +4,11 @@ use std::{
 };
 
 use crossbeam::{channel::Sender, queue::SegQueue};
-use dashmap::DashSet;
+use dashmap::{DashMap, DashSet};
 use rayon::prelude::*;
 
 use smol_str::SmolStr;
+use swc_common::Mark;
 use swc_ecma_ast::{ModuleDecl, ModuleItem};
 use swc_ecma_visit::VisitMutWith;
 
@@ -25,6 +26,7 @@ pub struct Worker {
   pub job_queue: Arc<SegQueue<ResolvedId>>,
   pub tx: Sender<Msg>,
   pub processed_id: Arc<DashSet<SmolStr>>,
+  pub mark_to_stmt: Arc<DashMap<Mark, (SmolStr, usize)>>,
 }
 
 impl Worker {
@@ -125,7 +127,7 @@ impl Worker {
         }
         module.namespace.mark = self.symbol_box.lock().unwrap().new_mark();
 
-        module.set_statements(ast.clone(), scanner.statement_infos);
+        module.set_statements(ast, scanner.statement_infos, self.mark_to_stmt.clone());
 
         module.bind_local_references(&mut self.symbol_box.lock().unwrap());
 

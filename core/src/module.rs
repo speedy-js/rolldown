@@ -8,6 +8,7 @@ use dashmap::DashMap;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
+use std::sync::{Arc, Mutex};
 use std::{collections::HashSet, hash::Hash};
 
 use ast::{
@@ -21,6 +22,7 @@ use swc_common::util::take::Take;
 use swc_common::{Mark, SyntaxContext, DUMMY_SP};
 use swc_ecma_ast::Ident;
 
+use crate::ext::SyntaxContextExt;
 use swc_ecma_codegen::text_writer::WriteJs;
 use swc_ecma_codegen::Emitter;
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut};
@@ -39,7 +41,7 @@ pub struct Module {
   // resolved_ids is using for caching.
   pub resolved_ids: DashMap<JsWord, ResolvedId>,
   pub statements: Vec<Statement>,
-  pub definations: HashMap<JsWord, usize>,
+  pub definitions: HashMap<JsWord, usize>,
   pub id: SmolStr,
   pub local_exports: HashMap<JsWord, ExportDesc>,
   pub re_exports: HashMap<JsWord, ReExportDesc>,
@@ -56,7 +58,7 @@ pub struct Module {
 impl Module {
   pub fn new(id: SmolStr) -> Self {
     Self {
-      definations: Default::default(),
+      definitions: Default::default(),
       statements: Default::default(),
       id,
       local_exports: Default::default(),
@@ -101,54 +103,72 @@ impl Module {
       });
   }
 
-  pub fn set_statements(&mut self, ast: ast::Module, module_item_infos: Vec<ModuleItemInfo>) {
+  pub fn set_statements(
+    &mut self,
+    ast: ast::Module,
+    module_item_infos: Vec<ModuleItemInfo>,
+    mark_to_stmt: Arc<DashMap<Mark, (SmolStr, usize)>>,
+  ) {
     self.statements = ast
       .body
       .into_iter()
       .zip(module_item_infos.into_iter())
       .enumerate()
       .map(|(idx, (node, info))| {
+        let is_decl_or_stmt = matches!(
+          node,
+          ModuleItem::ModuleDecl(
+            ModuleDecl::ExportDecl(_)
+              | ModuleDecl::ExportDefaultExpr(_)
+              | ModuleDecl::ExportDefaultDecl(_)
+          ) | ModuleItem::Stmt(_)
+        );
         let mut stmt = Statement::new(node);
-        info.declared.iter().for_each(|rely| {
-          self.definations.insert(rely.clone(), idx);
+        if let Some(export_mark) = info.export_mark {
+          mark_to_stmt
+            .entry(export_mark.clone())
+            .or_insert_with(|| (self.id.clone(), idx));
+        }
+        info.declared.iter().for_each(|(name, mark)| {
+          self.definitions.insert(name.clone(), idx);
+
+          // Skip declarations brought by `import`
+          if is_decl_or_stmt {
+            mark_to_stmt
+              .entry(mark.clone())
+              .or_insert_with(|| (self.id.clone(), idx));
+          }
         });
         stmt.writes = info.writes;
         stmt.reads = info.reads;
         stmt.side_effect = info.side_effect;
-        if stmt.side_effect.is_none() {
-          let has_unknown_name = stmt
-            .reads
-            .iter()
-            .chain(stmt.writes.iter())
-            .any(|name| !self.declared_symbols.contains_key(name));
-          if has_unknown_name {
-            // TODO: Should do this in Scanner
-            stmt.side_effect = Some(SideEffect::VisitGlobalVar)
-          }
-        }
+        // TODO: add it back later
+        // if stmt.side_effect.is_none() {
+        //   let has_unknown_name = stmt
+        //     .reads
+        //     .iter()
+        //     .chain(stmt.writes.iter())
+        //     .any(|name| !self.declared_symbols.contains_key(name));
+        //   if has_unknown_name {
+        //     // TODO: Should do this in Scanner
+        //     stmt.side_effect = Some(SideEffect::VisitGlobalVar)
+        //   }
+        // }
 
         stmt
       })
       .collect();
   }
 
-  pub fn include_name(&mut self, name: &JsWord) {
-    if let Some(stmt_idx) = self.definations.get(name).map(|s| *s) {
+  pub fn include_mark(&mut self, name: &JsWord, mark: &Mark) {
+    log::debug!(
+      "[treeshake]: definition `{}` included in `{}`",
+      &name,
+      self.id
+    );
+    if let Some(&stmt_idx) = self.definitions.get(name) {
       let stmt = &mut self.statements[stmt_idx];
-      if !stmt.included {
-        stmt.include();
-        log::debug!("include_name {}", name);
-        stmt
-          .reads
-          .iter()
-          .chain(stmt.writes.iter())
-          .cloned()
-          .collect::<HashSet<_>>()
-          .iter()
-          .for_each(|name| self.include_name(name));
-      }
-    } else {
-      log::debug!("unkown define name {:?}", name)
+      stmt.reads.insert(mark.clone());
     }
   }
 
@@ -158,19 +178,8 @@ impl Module {
         .statements
         .par_iter_mut()
         .filter(|stmt| stmt.side_effect.is_some())
-        .map(|stmt| {
+        .for_each(|stmt| {
           stmt.include();
-          stmt
-        })
-        .flat_map(|stmt| vec![&stmt.reads, &stmt.writes])
-        .flatten()
-        .filter_map(|name| self.definations.get(name))
-        .cloned()
-        .collect::<Vec<_>>()
-        .into_iter()
-        .for_each(|idx| {
-          log::debug!("include_stmt {:?}", self.statements[idx]);
-          self.statements[idx].include();
         });
     } else {
       self.statements.par_iter_mut().for_each(|stmt| {
@@ -222,7 +231,7 @@ impl Module {
     }
   }
 
-  pub fn include_namespace(&mut self) {
+  pub fn include_namespace(&mut self, mark_to_stmt: Arc<DashMap<Mark, (SmolStr, usize)>>) {
     if !self.namespace.included {
       let suggested_default_export_name = self
         .suggested_names
@@ -237,27 +246,30 @@ impl Module {
         .declared_symbols
         .contains_key(&suggested_default_export_name));
       self.local_exports.insert(
-        "*".to_string().into(),
+        "*".into(),
         ExportDesc {
           identifier: None,
-          mark: self.namespace.mark,
+          mark: self.namespace.mark.clone(),
           local_name: suggested_default_export_name.clone(),
         },
       );
-      self
-        .exports
-        .insert("*".to_string().into(), self.namespace.mark);
+      self.exports.insert("*".into(), self.namespace.mark);
       let namespace = ast_sugar::namespace(
         (suggested_default_export_name.clone(), self.namespace.mark),
         &self.exports,
       );
       let mut s = Statement::new(ast::ModuleItem::Stmt(namespace.clone()));
-      s.include();
       let idx = self.statements.len();
       self
-        .definations
+        .definitions
         .insert(suggested_default_export_name.clone(), idx);
-      s.declared.insert(suggested_default_export_name.clone());
+      s.declared
+        .entry(suggested_default_export_name.clone())
+        .or_insert_with(|| self.namespace.mark);
+
+      mark_to_stmt
+        .entry(self.namespace.mark)
+        .or_insert_with(|| (self.id.clone(), idx));
       self.statements.push(s);
       self
         .declared_symbols
@@ -288,7 +300,7 @@ impl std::fmt::Debug for Module {
       .field("resolved_ids", &self.resolved_ids)
       .field("suggested_names", &self.suggested_names)
       .field("statements", &self.statements)
-      .field("definations", &self.definations)
+      .field("definitions", &self.definitions)
       .finish()
   }
 }

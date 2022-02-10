@@ -38,14 +38,11 @@ impl Scanner {
   pub fn add_import(&mut self, module_decl: &ModuleDecl) {
     if let ModuleDecl::Import(import_decl) = module_decl {
       let source = &import_decl.src.value;
-      let import_info = self
-        .import_infos
-        .entry(source.clone())
-        .or_insert_with(|| {
-          let rel = RelationInfo::new(source.clone(), self.cur_relation_order);
-          self.cur_relation_order += 1;
-          rel
-        });
+      let import_info = self.import_infos.entry(source.clone()).or_insert_with(|| {
+        let rel = RelationInfo::new(source.clone(), self.cur_relation_order);
+        self.cur_relation_order += 1;
+        rel
+      });
 
       // We separate each specifier to support later tree-shaking.
       import_decl.specifiers.iter().for_each(|specifier| {
@@ -119,12 +116,14 @@ impl Scanner {
           DefaultDecl::Fn(node) => node.ident.as_ref().map(|id| id.sym.clone()),
           _ => None,
         };
+        let mark = self.symbol_box.lock().unwrap().new_mark();
+        self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
         self.local_exports.insert(
           "default".into(),
           ExportDesc {
             identifier,
             local_name: "default".into(),
-            mark: self.symbol_box.lock().unwrap().new_mark(),
+            mark,
           },
         );
       }
@@ -134,12 +133,14 @@ impl Scanner {
           Expr::Ident(id) => Some(id.sym.clone()),
           _ => None,
         };
+        let mark = self.symbol_box.lock().unwrap().new_mark();
+        self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
         self.local_exports.insert(
           "default".into(),
           ExportDesc {
             identifier,
             local_name: "default".into(),
-            mark: self.symbol_box.lock().unwrap().new_mark(),
+            mark,
           },
         );
       }
@@ -174,8 +175,10 @@ impl Scanner {
                 re_export_info.names.insert(Specifier {
                   original: get_sym_from_module_export(&s.orig).clone(),
                   used: name.clone(),
-                  mark: re_export_mark,
+                  mark: re_export_mark.clone(),
                 });
+                self.statement_infos[self.cur_stmt_index].export_mark =
+                  Some(re_export_mark.clone());
                 self.re_exports.insert(
                   name.clone(),
                   ReExportDesc {
@@ -195,12 +198,15 @@ impl Scanner {
                   .map_or(get_sym_from_module_export(&s.orig), |id| {
                     get_sym_from_module_export(&id).clone()
                   });
+
+                let mark = self.symbol_box.lock().unwrap().new_mark();
+                self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
                 self.local_exports.insert(
                   exported_name.clone(),
                   ExportDesc {
                     identifier: None,
                     local_name,
-                    mark: self.symbol_box.lock().unwrap().new_mark(),
+                    mark,
                   },
                 );
               };
@@ -229,6 +235,7 @@ impl Scanner {
               });
               // export * as name from './other'
               let name = get_sym_from_module_export(&s.name).clone();
+              self.statement_infos[self.cur_stmt_index].export_mark = Some(re_export_mark.clone());
               self.re_exports.insert(
                 name.clone(),
                 ReExportDesc {
@@ -251,24 +258,28 @@ impl Scanner {
           Decl::Class(node) => {
             // export class Foo {}
             let local_name = node.ident.sym.clone();
+            let mark = self.symbol_box.lock().unwrap().new_mark();
+            self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
             self.local_exports.insert(
               local_name.clone(),
               ExportDesc {
                 identifier: None,
                 local_name,
-                mark: self.symbol_box.lock().unwrap().new_mark(),
+                mark,
               },
             );
           }
           Decl::Fn(node) => {
             // export function foo () {}
             let local_name = node.ident.sym.clone();
+            let mark = self.symbol_box.lock().unwrap().new_mark();
+            self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
             self.local_exports.insert(
               local_name.clone(),
               ExportDesc {
                 identifier: None,
                 local_name,
-                mark: self.symbol_box.lock().unwrap().new_mark(),
+                mark,
               },
             );
           }
@@ -279,12 +290,14 @@ impl Scanner {
               collect_js_word_of_pat(&decl.name)
                 .into_iter()
                 .for_each(|local_name| {
+                  let mark = self.symbol_box.lock().unwrap().new_mark();
+                  self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
                   self.local_exports.insert(
                     local_name.clone(),
                     ExportDesc {
                       identifier: None,
                       local_name,
-                      mark: self.symbol_box.lock().unwrap().new_mark(),
+                      mark,
                     },
                   );
                 });
@@ -295,7 +308,9 @@ impl Scanner {
       }
       ModuleDecl::ExportAll(node) => {
         // export * from './other'
-        self.export_all_sources.insert((node.src.value.clone(), self.cur_relation_order));
+        self
+          .export_all_sources
+          .insert((node.src.value.clone(), self.cur_relation_order));
         self.cur_relation_order += 1;
       }
       _ => {}
@@ -305,7 +320,7 @@ impl Scanner {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Specifier {
-  /// The original defined name 
+  /// The original defined name
   pub original: JsWord,
   /// The name importer used
   pub used: JsWord,
