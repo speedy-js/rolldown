@@ -21,6 +21,7 @@ use rayon::prelude::*;
 use smol_str::SmolStr;
 use swc_atoms::JsWord;
 use swc_common::Mark;
+use swc_ecma_ast::{ModuleDecl, ModuleItem};
 
 use crate::ext::MarkExt;
 use crate::{
@@ -29,7 +30,7 @@ use crate::{
   scanner::rel::RelationInfo,
   symbol_box::SymbolBox,
   types::{NormalizedInputOptions, ResolvedId},
-  utils::resolve_id,
+  utils::{is_decl_or_stmt, resolve_id},
   worker::Worker,
 };
 
@@ -266,23 +267,28 @@ impl Graph {
 
       read_marks.into_iter().for_each(|mark| {
         let from_root_mark = self.symbol_box.lock().unwrap().find_root(mark);
-        if let Some(pair) = self.mark_to_stmt.iter().find(|pair| {
+        let matched_decls = self.mark_to_stmt.iter().filter(|pair| {
           let dest_root_mark = self.symbol_box.lock().unwrap().find_root(*pair.key());
           from_root_mark == dest_root_mark
-        }) {
-          // TODO: fix namespace import, currently with demo `namespace` is sometimes not working as intended
-          // as the order matters and set_statements is orderless
+        });
+
+        matched_decls.into_iter().try_for_each(|pair| {
+          // TODO: recursively add `export *` 's mark
           let (module_id, idx) = pair.value();
           let module = self.module_by_id.get_mut(module_id).unwrap();
           let stmt = &mut module.statements[*idx];
+          if !is_decl_or_stmt(&stmt.node) {
+            return std::ops::ControlFlow::Continue(());
+          }
           log::debug!(
             "[treeshake]: module id: {} stmts: {:#?}",
             module_id.as_str(),
             stmt,
           );
           log::debug!("[treeshake]: include statement {:#?}", stmt.node.clone());
-          stmt.include()
-        }
+          stmt.include();
+          std::ops::ControlFlow::Break(())
+        });
       });
     }
   }

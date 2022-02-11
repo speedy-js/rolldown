@@ -3,7 +3,7 @@ pub mod name_helpers;
 pub mod side_effect;
 use std::path::Path;
 
-use swc_ecma_ast::EsVersion;
+use swc_ecma_ast::{EsVersion, ModuleDecl, ModuleItem};
 
 use swc_common::{
   errors::{ColorConfig, Handler},
@@ -34,10 +34,19 @@ pub fn is_external_module(source: &str) -> bool {
   source.starts_with("node:") || (!nodejs_path::is_absolute(source) && !source.starts_with("."))
 }
 
-pub fn parse_file(
-  source_code: String,
-  filename: &str,
-) -> swc_ecma_ast::Module {
+#[inline]
+pub fn is_decl_or_stmt(node: &ModuleItem) -> bool {
+  matches!(
+    node,
+    ModuleItem::ModuleDecl(
+      ModuleDecl::ExportDecl(_)
+        | ModuleDecl::ExportDefaultExpr(_)
+        | ModuleDecl::ExportDefaultDecl(_)
+    ) | ModuleItem::Stmt(_)
+  )
+}
+
+pub fn parse_file(source_code: String, filename: &str) -> swc_ecma_ast::Module {
   let handler = Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(SOURCE_MAP.clone()));
   let p = Path::new(filename);
   let fm = SOURCE_MAP.new_source_file(FileName::Custom(filename.to_owned()), source_code);
@@ -73,5 +82,3 @@ pub fn parse_file(
   });
   parser.parse_module().unwrap()
 }
-
-

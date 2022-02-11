@@ -22,7 +22,7 @@ use swc_common::util::take::Take;
 use swc_common::{Mark, SyntaxContext, DUMMY_SP};
 use swc_ecma_ast::Ident;
 
-use crate::ext::SyntaxContextExt;
+use crate::{ext::SyntaxContextExt, utils::is_decl_or_stmt};
 use swc_ecma_codegen::text_writer::WriteJs;
 use swc_ecma_codegen::Emitter;
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut};
@@ -115,14 +115,7 @@ impl Module {
       .zip(module_item_infos.into_iter())
       .enumerate()
       .map(|(idx, (node, info))| {
-        let is_decl_or_stmt = matches!(
-          node,
-          ModuleItem::ModuleDecl(
-            ModuleDecl::ExportDecl(_)
-              | ModuleDecl::ExportDefaultExpr(_)
-              | ModuleDecl::ExportDefaultDecl(_)
-          ) | ModuleItem::Stmt(_)
-        );
+        let is_decl_or_stmt = is_decl_or_stmt(&node);
         let mut stmt = Statement::new(node);
         if let Some(export_mark) = info.export_mark {
           mark_to_stmt
