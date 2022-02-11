@@ -84,23 +84,21 @@ impl Module {
     // We couldn't deal with `export * from './foo'` now.
   }
 
-  pub fn bind_local_references(&self, symbol_box: &mut SymbolBox) {
-    self
-      .local_exports
-      .iter()
-      .for_each(|(_exported_name, export_desc)| {
-        let refernenced_name = export_desc
-          .identifier
-          .as_ref()
-          .unwrap_or(&export_desc.local_name);
-        if refernenced_name == "default" {
-          // This means that the module's `export default` is a value. Sush as `export default 1`
-          // No name to bind. And we need to generate a name for it lately.
-          return;
-        }
-        let symbol_mark = self.resolve_mark(refernenced_name);
-        symbol_box.union(export_desc.mark, symbol_mark);
-      });
+  pub fn bind_local_references(&mut self, symbol_box: &mut SymbolBox) {
+    let export_desc = self.local_exports.values_mut().collect::<Vec<_>>();
+    export_desc.into_iter().for_each(|export_desc| {
+      let refernenced_name = export_desc
+        .identifier
+        .as_ref()
+        .unwrap_or(&export_desc.local_name);
+      if refernenced_name == "default" {
+        // This means that the module's `export default` is a value. Sush as `export default 1`
+        // No name to bind. And we need to generate a name for it lately.
+        return;
+      }
+      let symbol_mark = self.resolve_mark(refernenced_name);
+      export_desc.mark = symbol_mark;
+    })
   }
 
   pub fn set_statements(
