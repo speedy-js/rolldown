@@ -1,55 +1,80 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
-use crate::{chunk::Chunk, graph, types::Shared, Module};
+use dashmap::DashSet;
 
-// #[derive(Debug, Error)]
-// pub enum BundleError {
-//   #[error("{0}")]
-//   GraphError(crate::graph::GraphError),
-//   #[error("{0}")]
-//   IoError(io::Error),
-//   #[error("No Module found")]
-//   NoModule,
-// }
+use crate::{chunk::Chunk, graph, structs::OutputChunk, types::NormalizedOutputOptions};
 
-// impl From<io::Error> for BundleError {
-//   fn from(err: io::Error) -> Self {
-//     Self::IoError(err)
-//   }
-// }
-
-// impl From<graph::GraphError> for BundleError {
-//   fn from(err: graph::GraphError) -> Self {
-//     Self::GraphError(err)
-//   }
-// }
-
-#[derive(Clone)]
 #[non_exhaustive]
 pub struct Bundle {
   pub graph: graph::Graph,
+  pub output_options: NormalizedOutputOptions,
 }
 
 impl Bundle {
-  pub fn new(graph: graph::Graph) -> Self {
-    Self { graph }
+  pub fn new(graph: graph::Graph, output_options: NormalizedOutputOptions) -> Self {
+    Self {
+      graph,
+      output_options,
+    }
   }
 
-  pub fn generate(&self) {
+  fn generate_chunks(&self) -> Vec<Chunk> {
+    let start = Instant::now();
 
-    let _chunks = self.generate_chunks();
-  }
+    let entries = DashSet::new();
+    self.graph.entry_indexs.iter().for_each(|entry| {
+      let entry = self.graph.module_graph[*entry].to_owned();
+      entries.insert(entry);
+    });
 
-  pub fn generate_chunks(&self) -> Vec<Chunk> {
-    let chunks = vec![];
-    let _chunk_by_module: HashMap<Shared<Module>, Chunk> = HashMap::default();
+    let chunks = vec![Chunk {
+      id: Default::default(),
+      order_modules: self
+        .graph
+        .ordered_modules
+        .clone()
+        .into_iter()
+        .map(|idx| self.graph.module_graph[idx].clone())
+        .collect(),
+      symbol_box: self.graph.symbol_box.clone(),
+      entries,
+    }];
+    println!(
+      "generate_chunks() finished in {}",
+      start.elapsed().as_millis()
+    );
 
     chunks
   }
 
-  pub fn add_manual_chunks(&self) -> HashMap<Shared<Module>, String> {
-    let manual_chunk_alias_by_entry = HashMap::default();
+  pub fn generate(&mut self) -> HashMap<String, OutputChunk> {
+    let gen_start = Instant::now();
 
-    manual_chunk_alias_by_entry
+    let mut chunks = self.generate_chunks();
+
+    chunks.iter_mut().for_each(|chunk| {
+      if let Some(file) = &self.output_options.file {
+        chunk.id = nodejs_path::basename!(file).into();
+      } else {
+        chunk.id = chunk.generate_id(&self.output_options);
+      }
+    });
+
+    let rendered_chunks = chunks
+      .iter_mut()
+      .map(|chunk| chunk.render(&self.output_options, &mut self.graph.module_by_id))
+      .collect::<Vec<_>>();
+
+
+    let output = rendered_chunks
+      .into_iter()
+      .map(|chunk| OutputChunk {
+        file_name: chunk.file_name,
+        code: chunk.code,
+      })
+      .map(|output_chunk| (output_chunk.file_name.clone(), output_chunk))
+      .collect();
+    println!("generate() finished in {}", gen_start.elapsed().as_millis());
+    output
   }
 }

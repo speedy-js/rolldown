@@ -1,4 +1,4 @@
-use crate::utils::plugin_driver::Plugin;
+
 
 // (source: &str, importer: Option<&str>, is_resolved: bool)
 type IsExternal = Box<dyn Fn(&str, Option<&str>, bool) -> bool>;
@@ -32,24 +32,26 @@ pub struct NormalizedInputOptions {
   // pub module_context: ModuleContext,
 
   // --- Options that Rolldown must need to be supported
-  // treeshake: false | NormalizedTreeshakingOptions;
-  pub plugins: Vec<Box<dyn Plugin>>,
+  pub treeshake: bool,
+  // pub treeshake: bool | NormalizedTreeshakingOptions;
+  // pub plugins: Vec<Box<dyn Plugin>>,
   // By default, the context of a module – i.e., the value of this at the top level – is undefined. In rare cases you might need to change this to something else, like 'window'.
-  pub context: Option<String>,
-  pub external: IsExternal,
+  // pub context: Option<String>,
+  // pub external: IsExternal,
   // (alias: Option<String>, path: String)
-  pub input: Vec<(Option<String>, String)>,
-  pub preserve_symlinks: bool,
+  pub input: Vec<String>,
+  // pub preserve_symlinks: bool,
 }
 
 impl Default for NormalizedInputOptions {
   fn default() -> Self {
     Self {
-      context: None,
-      external: Box::new(|_, _, _| false),
-      input: Vec::default(),
-      preserve_symlinks: false,
-      plugins: vec![],
+      // context: None,
+      // external: Box::new(|_, _, _| false),
+      input: Default::default(),
+      // preserve_symlinks: false,
+      // plugins: Default::default(),
+      treeshake: false,
     }
   }
 }

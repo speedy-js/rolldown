@@ -29,13 +29,10 @@
   },
   "scripts": {
     "artifacts": "napi artifacts -d ../../artifacts",
-    "build": "napi build --platform --release",
+    "build": "napi build --platform --release --dts binding.d.ts --js binding.js",
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish",
     "version": "napi version"
-  },
-  "dependencies": {
-    "@node-rs/helper": "^1.2.1"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

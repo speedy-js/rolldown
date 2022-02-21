@@ -1,12 +1,13 @@
-use rolldown::{types::NormalizedInputOptions, Graph};
+use rolldown::graph::Graph;
+
+// use rolldown::graph::GraphContainer;
 
 fn main() {
-  let o = NormalizedInputOptions {
-    input: vec![(None, "./tests/fixtures/dynamic-import/main.js".to_owned())],
-    ..Default::default()
-  };
-  let mut graph = Graph::new(o);
+  // let mut graph = GraphContainer::new("./tests/fixtures/preact/index.js".to_owned());
+  // let mut graph = GraphContainer::new("./tests/fixtures/basic/main.js".to_owned());
+  // let mut graph = GraphContainer::new("./tests/fixtures/symbols.js".to_owned());
+  let mut graph = Graph::from_single_entry("../node_modules/lodash-es/lodash.js".to_owned());
+  // let mut graph = GraphContainer::new("./tests/fixtures/conflicted/index.js".to_owned());
+  // let mut graph = GraphContainer::new("./tests/fixtures/inter_module/index.js".to_owned());
   graph.build();
-
-  // println!("entry_modules {:#?}", graph.entry_modules)
 }
