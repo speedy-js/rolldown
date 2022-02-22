@@ -5,10 +5,10 @@ use std::{
 
 use swc_common::{Mark, SyntaxContext};
 use swc_ecma_ast::{
-  ExportNamedSpecifier, Expr, Ident, ImportDecl, KeyValueProp, ObjectLit, Prop,
-  PropName, PropOrSpread, ModuleExportName, MemberExpr,
+  ExportNamedSpecifier, Expr, Ident, ImportDecl, KeyValueProp, MemberExpr, ModuleExportName,
+  ObjectLit, Prop, PropName, PropOrSpread,
 };
-use swc_ecma_visit::{VisitMut, VisitMutWith, noop_visit_mut_type};
+use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
 use crate::{ext::SyntaxContextExt, symbol_box::SymbolBox};
 

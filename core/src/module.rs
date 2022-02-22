@@ -2,13 +2,13 @@ use crate::ast;
 use crate::scanner::ModuleItemInfo;
 use crate::statement::Statement;
 use crate::symbol_box::SymbolBox;
-use crate::utils::side_effect::SideEffect;
+
 use crate::utils::{ast_sugar, resolve_id};
 use dashmap::DashMap;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::{collections::HashSet, hash::Hash};
 
 use ast::{
@@ -22,7 +22,7 @@ use swc_common::util::take::Take;
 use swc_common::{Mark, SyntaxContext, DUMMY_SP};
 use swc_ecma_ast::Ident;
 
-use crate::{ext::SyntaxContextExt, utils::is_decl_or_stmt};
+use crate::{utils::is_decl_or_stmt};
 use swc_ecma_codegen::text_writer::WriteJs;
 use swc_ecma_codegen::Emitter;
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut};
@@ -119,7 +119,7 @@ impl Module {
         let mut stmt = Statement::new(node);
         if let Some(export_mark) = info.export_mark {
           mark_to_stmt
-            .entry(export_mark.clone())
+            .entry(export_mark)
             .or_insert_with(|| (self.id.clone(), idx));
         }
         info.declared.iter().for_each(|(name, mark)| {
@@ -128,7 +128,7 @@ impl Module {
           // Skip declarations brought by `import`
           if is_decl_or_stmt {
             mark_to_stmt
-              .entry(mark.clone())
+              .entry(*mark)
               .or_insert_with(|| (self.id.clone(), idx));
           }
         });
@@ -161,7 +161,7 @@ impl Module {
     );
     if let Some(&stmt_idx) = self.definitions.get(name) {
       let stmt = &mut self.statements[stmt_idx];
-      stmt.reads.insert(mark.clone());
+      stmt.reads.insert(*mark);
     }
   }
 
@@ -199,7 +199,7 @@ impl Module {
         .imported_symbols
         .get(name)
         // TODO: how can we support global exports? such as `export { Math }`
-        .expect(&format!("unkown name: {:?} for module {}", name, self.id))
+        .unwrap_or_else(|| panic!("unkown name: {:?} for module {}", name, self.id))
     })
   }
 
@@ -228,8 +228,7 @@ impl Module {
     if !self.namespace.included {
       let suggested_default_export_name = self
         .suggested_names
-        .get(&"*".into())
-        .map(|s| s.clone())
+        .get(&"*".into()).cloned()
         .unwrap_or_else(|| {
           (get_valid_name(nodejs_path::parse(&self.id).name) + "namespace").into()
         });
@@ -242,7 +241,7 @@ impl Module {
         "*".into(),
         ExportDesc {
           identifier: None,
-          mark: self.namespace.mark.clone(),
+          mark: self.namespace.mark,
           local_name: suggested_default_export_name.clone(),
         },
       );
@@ -251,7 +250,7 @@ impl Module {
         (suggested_default_export_name.clone(), self.namespace.mark),
         &self.exports,
       );
-      let mut s = Statement::new(ast::ModuleItem::Stmt(namespace.clone()));
+      let mut s = Statement::new(ast::ModuleItem::Stmt(namespace));
       let idx = self.statements.len();
       self
         .definitions
@@ -300,7 +299,7 @@ impl std::fmt::Debug for Module {
 
 impl Hash for Module {
   fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-    state.write(&self.id.as_bytes());
+    state.write(self.id.as_bytes());
   }
 }
 
@@ -327,8 +326,7 @@ pub fn fold_export_decl_to_decl(
   let mut get_default_ident = || {
     let suggested_default_export_name = module
       .suggested_names
-      .get(&"default".into())
-      .map(|s| s.clone())
+      .get(&"default".into()).cloned()
       .unwrap_or_else(|| get_valid_name(nodejs_path::parse(&module.id).name).into());
 
     assert!(!module
@@ -336,7 +334,7 @@ pub fn fold_export_decl_to_decl(
       .contains_key(&suggested_default_export_name));
     module.declared_symbols.insert(
       suggested_default_export_name.clone(),
-      module.exports.get(&"default".into()).unwrap().clone(),
+      *module.exports.get(&"default".into()).unwrap(),
     );
 
     Ident::new(suggested_default_export_name, DUMMY_SP)

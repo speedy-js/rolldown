@@ -1,5 +1,3 @@
-
-
 // (source: &str, importer: Option<&str>, is_resolved: bool)
 type IsExternal = Box<dyn Fn(&str, Option<&str>, bool) -> bool>;
 

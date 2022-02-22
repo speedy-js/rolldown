@@ -65,7 +65,6 @@ impl Bundle {
       .map(|chunk| chunk.render(&self.output_options, &mut self.graph.module_by_id))
       .collect::<Vec<_>>();
 
-
     let output = rendered_chunks
       .into_iter()
       .map(|chunk| OutputChunk {

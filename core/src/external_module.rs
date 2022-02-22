@@ -18,6 +18,6 @@ impl ExternalModule {
 
 impl Hash for ExternalModule {
   fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-    state.write(&self.id.as_bytes());
+    state.write(self.id.as_bytes());
   }
 }

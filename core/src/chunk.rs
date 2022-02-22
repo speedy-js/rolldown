@@ -51,7 +51,7 @@ impl Chunk {
     let mut mark_to_name = HashMap::new();
 
     // Deconflict from the entry module to keep namings as simple as possible
-    let mut reverse_ordered_modules = self
+    let reverse_ordered_modules = self
       .order_modules
       .iter()
       .map(|id| modules.get(id).unwrap())
@@ -61,8 +61,7 @@ impl Chunk {
     reverse_ordered_modules.into_iter().for_each(|module| {
       module.declared_symbols.iter().for_each(|(name, mark)| {
         let root_mark = self.symbol_box.lock().unwrap().find_root(*mark);
-        if mark_to_name.contains_key(&root_mark) {
-        } else {
+        if let std::collections::hash_map::Entry::Vacant(e) = mark_to_name.entry(root_mark) {
           let original_name = name.to_string();
           let mut name = name.to_string();
           let mut count = 0;
@@ -70,8 +69,9 @@ impl Chunk {
             name = format!("{}${}", original_name, count);
             count += 1;
           }
-          mark_to_name.insert(root_mark, name.clone());
+          e.insert(name.clone());
           used_names.insert(name);
+        } else {
         }
       });
     });
@@ -191,7 +191,7 @@ impl Chunk {
 
   #[inline]
   pub fn get_chunk_name(&self) -> &str {
-    return self.get_fallback_chunk_name();
+    self.get_fallback_chunk_name()
   }
 
   pub fn generate_id(&self, options: &NormalizedOutputOptions) -> SmolStr {

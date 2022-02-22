@@ -1,5 +1,3 @@
-
-
 use once_cell::sync::Lazy;
 use swc_common::{sync::Lrc, SourceMap};
 

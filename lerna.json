@@ -1,6 +1,6 @@
 {
-  "packages": ["node"],
-  "npmClient": "yarn",
+  "packages": ["./node"],
+  "npmClient": "pnpm",
   "useWorkspaces": true,
   "version": "independent",
   "command": {

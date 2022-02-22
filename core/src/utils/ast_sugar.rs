@@ -50,7 +50,7 @@ fn expr_ident(s: &str) -> Box<Expr> {
 }
 
 pub fn export(exports: &HashMap<JsWord, Mark>) -> ModuleDecl {
-  let mut exports = exports.into_iter().collect::<Vec<_>>();
+  let mut exports = exports.iter().collect::<Vec<_>>();
 
   exports.sort_by(|a, b| a.0.cmp(b.0));
 
@@ -77,7 +77,7 @@ pub fn export(exports: &HashMap<JsWord, Mark>) -> ModuleDecl {
 }
 
 pub fn namespace(var_name: (JsWord, Mark), key_values: &HashMap<JsWord, Mark>) -> Stmt {
-  let mut key_values = key_values.into_iter().collect::<Vec<_>>();
+  let mut key_values = key_values.iter().collect::<Vec<_>>();
   key_values.sort_by(|a, b| a.0.cmp(b.0));
   let mut props = vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
     key: PropName::Str(str("__proto__")),

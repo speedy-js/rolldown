@@ -31,7 +31,7 @@ pub mod path {
 
 #[inline]
 pub fn is_external_module(source: &str) -> bool {
-  source.starts_with("node:") || (!nodejs_path::is_absolute(source) && !source.starts_with("."))
+  source.starts_with("node:") || (!nodejs_path::is_absolute(source) && !source.starts_with('.'))
 }
 
 #[inline]

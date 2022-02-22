@@ -117,7 +117,7 @@ impl Scanner {
           _ => None,
         };
         let mark = self.symbol_box.lock().unwrap().new_mark();
-        self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
+        self.statement_infos[self.cur_stmt_index].export_mark = Some(mark);
         self.local_exports.insert(
           "default".into(),
           ExportDesc {
@@ -134,7 +134,7 @@ impl Scanner {
           _ => None,
         };
         let mark = self.symbol_box.lock().unwrap().new_mark();
-        self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
+        self.statement_infos[self.cur_stmt_index].export_mark = Some(mark);
         self.local_exports.insert(
           "default".into(),
           ExportDesc {
@@ -168,41 +168,41 @@ impl Scanner {
                 let name = s
                   .exported
                   .as_ref()
-                  .map_or(get_sym_from_module_export(&s.orig).clone(), |id| {
+                  .map_or(get_sym_from_module_export(&s.orig), |id| {
                     get_sym_from_module_export(id)
                   });
                 let re_export_mark = self.symbol_box.lock().unwrap().new_mark();
                 re_export_info.names.insert(Specifier {
-                  original: get_sym_from_module_export(&s.orig).clone(),
+                  original: get_sym_from_module_export(&s.orig),
                   used: name.clone(),
-                  mark: re_export_mark.clone(),
+                  mark: re_export_mark,
                 });
                 self.statement_infos[self.cur_stmt_index].export_mark =
-                  Some(re_export_mark.clone());
+                  Some(re_export_mark);
                 self.re_exports.insert(
                   name.clone(),
                   ReExportDesc {
-                    local_name: get_sym_from_module_export(&s.orig).clone(),
+                    local_name: get_sym_from_module_export(&s.orig),
                     source,
-                    original: name.clone(),
+                    original: name,
                     mark: re_export_mark,
                   },
                 );
               } else {
                 // export { foo, bar, baz }
                 log::debug!("export var {:#?}", s);
-                let local_name = get_sym_from_module_export(&s.orig).clone();
+                let local_name = get_sym_from_module_export(&s.orig);
                 let exported_name: JsWord = s
                   .exported
                   .as_ref()
                   .map_or(get_sym_from_module_export(&s.orig), |id| {
-                    get_sym_from_module_export(&id).clone()
+                    get_sym_from_module_export(id)
                   });
 
                 let mark = self.symbol_box.lock().unwrap().new_mark();
-                self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
+                self.statement_infos[self.cur_stmt_index].export_mark = Some(mark);
                 self.local_exports.insert(
-                  exported_name.clone(),
+                  exported_name,
                   ExportDesc {
                     identifier: None,
                     local_name,
@@ -230,18 +230,18 @@ impl Scanner {
 
               re_export_info.names.insert(Specifier {
                 original: "*".into(),
-                used: get_sym_from_module_export(&s.name).clone(),
+                used: get_sym_from_module_export(&s.name),
                 mark: re_export_mark,
               });
               // export * as name from './other'
-              let name = get_sym_from_module_export(&s.name).clone();
-              self.statement_infos[self.cur_stmt_index].export_mark = Some(re_export_mark.clone());
+              let name = get_sym_from_module_export(&s.name);
+              self.statement_infos[self.cur_stmt_index].export_mark = Some(re_export_mark);
               self.re_exports.insert(
                 name.clone(),
                 ReExportDesc {
                   local_name: "*".into(),
                   source,
-                  original: name.clone(),
+                  original: name,
                   mark: re_export_mark,
                 },
               );
@@ -259,7 +259,7 @@ impl Scanner {
             // export class Foo {}
             let local_name = node.ident.sym.clone();
             let mark = self.symbol_box.lock().unwrap().new_mark();
-            self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
+            self.statement_infos[self.cur_stmt_index].export_mark = Some(mark);
             self.local_exports.insert(
               local_name.clone(),
               ExportDesc {
@@ -273,7 +273,7 @@ impl Scanner {
             // export function foo () {}
             let local_name = node.ident.sym.clone();
             let mark = self.symbol_box.lock().unwrap().new_mark();
-            self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
+            self.statement_infos[self.cur_stmt_index].export_mark = Some(mark);
             self.local_exports.insert(
               local_name.clone(),
               ExportDesc {
@@ -291,7 +291,7 @@ impl Scanner {
                 .into_iter()
                 .for_each(|local_name| {
                   let mark = self.symbol_box.lock().unwrap().new_mark();
-                  self.statement_infos[self.cur_stmt_index].export_mark = Some(mark.clone());
+                  self.statement_infos[self.cur_stmt_index].export_mark = Some(mark);
                   self.local_exports.insert(
                     local_name.clone(),
                     ExportDesc {

@@ -14,16 +14,16 @@ use crossbeam::{
 use dashmap::{DashMap, DashSet};
 use petgraph::{
   graph::NodeIndex,
-  visit::{depth_first_search, DfsEvent, EdgeRef},
+  visit::{EdgeRef},
   EdgeDirection,
 };
 use rayon::prelude::*;
 use smol_str::SmolStr;
-use swc_atoms::JsWord;
-use swc_common::Mark;
-use swc_ecma_ast::{ModuleDecl, ModuleItem};
 
-use crate::ext::MarkExt;
+use swc_common::Mark;
+
+
+
 use crate::{
   external_module::ExternalModule,
   module::Module,
@@ -196,7 +196,7 @@ impl Graph {
           .module_graph
           .edges_directed(node_idx, EdgeDirection::Outgoing);
         let mut rels = edges.collect::<Vec<_>>();
-        rels.sort_by(|a, b| a.weight().get_order().cmp(&b.weight().get_order()));
+        rels.sort_by_key(|a| a.weight().get_order());
         rels
           .into_iter()
           .rev()
@@ -250,7 +250,7 @@ impl Graph {
         module
           .local_exports
           .values()
-          .map(|desc| (desc.local_name.clone(), desc.mark.clone()))
+          .map(|desc| (desc.local_name.clone(), desc.mark))
           .collect::<Vec<_>>()
           .into_iter()
           .for_each(|(name, mark)| {
@@ -261,7 +261,7 @@ impl Graph {
       let read_marks = self
         .module_by_id
         .iter()
-        .flat_map(|(id, module)| module.statements.iter().flat_map(|stmt| stmt.reads.iter()))
+        .flat_map(|(_id, module)| module.statements.iter().flat_map(|stmt| stmt.reads.iter()))
         .cloned()
         .collect::<Vec<_>>();
 

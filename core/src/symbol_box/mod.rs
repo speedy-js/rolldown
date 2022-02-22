@@ -8,7 +8,7 @@ pub struct SymbolBox {
   // globals: Globals,
 }
 
-pub(crate) static SYMBOL_GLOBALS: Lazy<Globals> = Lazy::new(|| Globals::new());
+pub(crate) static SYMBOL_GLOBALS: Lazy<Globals> = Lazy::new(Globals::new);
 
 impl SymbolBox {
   pub fn new() -> Self {

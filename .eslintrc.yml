@@ -184,3 +184,8 @@ overrides:
               ],
           },
         ]
+
+  - files:
+      - node/binding.js
+    rules:
+      'sonarjs/no-nested-switch': 0

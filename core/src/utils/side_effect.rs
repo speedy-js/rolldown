@@ -1,4 +1,4 @@
-use swc_ecma_ast::{Expr, ModuleItem, PatOrExpr, Stmt, ModuleDecl};
+use swc_ecma_ast::{Expr, ModuleDecl, ModuleItem, PatOrExpr, Stmt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SideEffect {
@@ -30,7 +30,7 @@ fn detect_side_effect_of_expr(expr: &Expr) -> Option<SideEffect> {
 
     Expr::Bin(BinExpr) => [BinExpr.left.as_ref(), BinExpr.right.as_ref()]
       .into_iter()
-      .find_map(|expr| detect_side_effect_of_expr(expr)),
+      .find_map(detect_side_effect_of_expr),
 
     Expr::Assign(AssignExpr) => match &AssignExpr.left {
       PatOrExpr::Expr(expr) => detect_side_effect_of_expr(expr.as_ref()),
@@ -46,7 +46,7 @@ fn detect_side_effect_of_expr(expr: &Expr) -> Option<SideEffect> {
       CondExpr.alt.as_ref(),
     ]
     .into_iter()
-    .find_map(|expr| detect_side_effect_of_expr(expr)),
+    .find_map(detect_side_effect_of_expr),
 
     Expr::Call(_CallExpr) => Some(SideEffect::FnCall),
     // `new Cat()`

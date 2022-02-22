@@ -129,7 +129,7 @@ impl Scanner {
         module_item_info
           .declared
           .entry(id.sym.clone())
-          .or_insert_with(|| mark.clone());
+          .or_insert_with(|| mark);
       };
     }
   }
@@ -144,7 +144,7 @@ impl Scanner {
         if is_root_scope {
           let stmt_info = &mut self.statement_infos[self.cur_stmt_index];
           // TODO: duplicate detect
-          stmt_info.reads.insert(mark.clone());
+          stmt_info.reads.insert(*mark);
         }
         break;
       };
@@ -192,7 +192,7 @@ impl VisitMut for Scanner {
 
   fn visit_mut_module_item(&mut self, node: &mut swc_ecma_ast::ModuleItem) {
     node.visit_mut_children_with(self);
-    self.statement_infos[self.cur_stmt_index].side_effect = detect_side_effect(&node);
+    self.statement_infos[self.cur_stmt_index].side_effect = detect_side_effect(node);
     self.cur_stmt_index += 1;
   }
 
@@ -250,8 +250,8 @@ impl VisitMut for Scanner {
   /// Handle body of the arrow functions
   fn visit_mut_block_stmt_or_expr(&mut self, node: &mut BlockStmtOrExpr) {
     match node {
-      BlockStmtOrExpr::BlockStmt(block) => block.visit_mut_children_with(self).into(),
-      BlockStmtOrExpr::Expr(e) => e.visit_mut_with(self).into(),
+      BlockStmtOrExpr::BlockStmt(block) => block.visit_mut_children_with(self),
+      BlockStmtOrExpr::Expr(e) => e.visit_mut_with(self),
     }
   }
 
@@ -632,7 +632,7 @@ impl<'me> VisitMut for Hoister<'me> {
   fn visit_mut_ident(&mut self, i: &mut Ident) {
     if let Some(ident_type) = &self.ident_type {
       match ident_type {
-        IdentType::Binding(kind) => self.scanner.declare(i, kind.clone()),
+        IdentType::Binding(kind) => self.scanner.declare(i, *kind),
         // We only bind symbol in Hoister
         _ => {}
       }

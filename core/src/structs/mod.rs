@@ -1,8 +1,7 @@
-use crate::{module::Module, external_module::ExternalModule};
-
+use crate::{external_module::ExternalModule, module::Module};
 
 #[derive(Debug)]
-pub struct  OutputChunk {
+pub struct OutputChunk {
   pub code: String,
   pub file_name: String,
 }
@@ -12,7 +11,6 @@ pub struct RenderedChunk {
   pub code: String,
   pub file_name: String,
 }
-
 
 #[derive(Debug)]
 pub enum RolldownOutput {
@@ -37,7 +35,6 @@ impl RolldownOutput {
     }
   }
 }
-
 
 #[derive(Debug, Hash, Clone)]
 pub enum ModOrExt {

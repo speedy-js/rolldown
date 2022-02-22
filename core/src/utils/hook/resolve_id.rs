@@ -11,7 +11,8 @@ pub fn resolve_id(
   preserve_symlinks: bool,
   // plugin_driver: &PluginDriver,
 ) -> ResolvedId {
-  let res = if importer.is_some() && is_external_module(source) {
+  
+  if importer.is_some() && is_external_module(source) {
     ResolvedId::new(source.to_string().into(), true)
   } else {
     let id = if let Some(importer) = importer {
@@ -21,8 +22,7 @@ pub fn resolve_id(
     };
     let id = fast_add_js_extension_if_necessary(id, preserve_symlinks);
     ResolvedId::new(id.into(), false)
-  };
-  res
+  }
 }
 
 #[inline]
@@ -61,11 +61,11 @@ fn find_file(file: &Path, preserve_symlinks: bool) -> Option<String> {
     } else if (preserve_symlinks && metadata.is_symlink()) || metadata.is_file() {
       let name: OsString = nodejs_path::basename!(&file.as_str()).into();
       let files = std::fs::read_dir(&nodejs_path::dirname(&file.as_str())).unwrap();
-      let s = files
+      
+      files
         .map(|result| result.unwrap())
         .find(|file| file.file_name() == name)
-        .map(|_| file.to_string_lossy().to_string());
-      s
+        .map(|_| file.to_string_lossy().to_string())
     } else {
       None
     }
