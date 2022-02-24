@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Instant};
+use std::collections::HashMap;
 
 use dashmap::DashSet;
 
@@ -19,8 +19,6 @@ impl Bundle {
   }
 
   fn generate_chunks(&self) -> Vec<Chunk> {
-    let start = Instant::now();
-
     let entries = DashSet::new();
     self.graph.entry_indexs.iter().for_each(|entry| {
       let entry = self.graph.module_graph[*entry].to_owned();
@@ -39,17 +37,11 @@ impl Bundle {
       symbol_box: self.graph.symbol_box.clone(),
       entries,
     }];
-    println!(
-      "generate_chunks() finished in {}",
-      start.elapsed().as_millis()
-    );
 
     chunks
   }
 
   pub fn generate(&mut self) -> HashMap<String, OutputChunk> {
-    let gen_start = Instant::now();
-
     let mut chunks = self.generate_chunks();
 
     chunks.iter_mut().for_each(|chunk| {
@@ -73,7 +65,6 @@ impl Bundle {
       })
       .map(|output_chunk| (output_chunk.file_name.clone(), output_chunk))
       .collect();
-    println!("generate() finished in {}", gen_start.elapsed().as_millis());
     output
   }
 }
